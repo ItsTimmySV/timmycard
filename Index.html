@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Credit Card Tracker + IA (Local)</title>
+  <style>
+    :root{
+      --bg:#0f172a; /* slate-900 */
+      --panel:#111827; /* gray-900 */
+      --panel-2:#0b1220; /* darker */
+      --text:#e5e7eb; /* gray-200 */
+      --muted:#9ca3af; /* gray-400 */
+      --accent:#22d3ee; /* cyan-400 */
+      --accent-2:#14b8a6; /* teal-500 */
+      --good:#22c55e;
+      --bad:#ef4444;
+      --warn:#f59e0b;
+      --chip:#1f2937; /* gray-800 */
+      --input:#111827;
+      --border:#243244; /* slate-700 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif;color:var(--text);background:linear-gradient(180deg,var(--panel-2),var(--bg));
+    }
+    header{
+      position:sticky;top:0;z-index:10;background:rgba(17,24,39,.8);backdrop-filter:saturate(1.2) blur(8px);
+      border-bottom:1px solid var(--border);
+    }
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    h1{font-size:20px;margin:0;display:flex;align-items:center;gap:10px}
+    .badge{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--border)}
+    .spacer{flex:1}
+    .btn{appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+    .btn:hover{border-color:var(--accent);}
+    .btn.primary{background:linear-gradient(180deg,#0b3940,#071d21);border-color:#0e2e36;color:#c7fbff}
+    .btn.danger{border-color:#4f1e1e;background:#291010}
+    .btn.good{border-color:#1e4f30;background:#0f2916}
+    .btn.warn{border-color:#4f3a1e;background:#291f0f}
+    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+    @media (max-width: 720px){.grid{grid-template-columns:1fr}}
+    @media (max-width: 480px){.wrap{padding:12px} header .wrap{padding:10px}}
+    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
+    .card{background:linear-gradient(180deg,#0e1220,#0b0f1a);border:1px solid var(--border);border-radius:16px;padding:14px}
+    .card h2{margin:0 0 10px;font-size:16px}
+    .sub{color:var(--muted);font-size:12px}
+
+    .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+    input,select,textarea{background:var(--input);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:10px;outline:0}
+    input[type="date"]{padding:7px 10px}
+    label{font-size:12px;color:var(--muted)}
+    .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    @media (max-width:700px){.kv{grid-template-columns:1fr}}
+
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th,td{padding:10px;border-bottom:1px dashed #1f2b3d;text-align:left;word-wrap:break-word}
+    th{font-weight:600;color:#cbd5e1}
+    tr:hover td{background:#0a1321}
+    /* Responsive table: hide less-critical columns on small screens */
+    @media (max-width: 650px){
+      #txTable th:nth-child(2), #txTable td:nth-child(2){display:none} /* Tarjeta */
+      #txTable th:nth-child(5), #txTable td:nth-child(5){display:none} /* Descripción */
+    }
+    .chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px}
+    .money{font-variant-numeric:tabular-nums}
+
+    .pill{font-size:11px;padding:2px 6px;border-radius:6px;border:1px solid var(--border);background:var(--panel)}
+    .ok{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+
+    /* Modal */
+    dialog{border:none;padding:0;background:transparent}
+    .modal{width:min(560px,92vw);background:#0b0f1a;border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+    .modal header{position:sticky;top:0;background:transparent;border:none}
+    .modal .content{padding:16px}
+    .modal h3{margin:0;font-size:16px}
+    .modal .actions{display:flex;gap:8px;justify-content:flex-end;padding:16px;border-top:1px solid var(--border)}
+
+    .rightcol{display:grid;gap:16px}
+    .footer{opacity:.8;font-size:12px;text-align:center;margin:18px 0}
+
+    .bubble{background:#0b1426;border:1px solid var(--border);padding:10px 12px;border-radius:12px;max-width:80%}
+    .bubble.me{background:#09121a;border-color:#163043;margin-left:auto}
+    .chat{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;padding-right:4px}
+    .skeleton{height:14px;background:linear-gradient(90deg,#0d1628, #0f223b 40%, #0d1628);background-size:200% 100%;animation:s 1.2s infinite}
+    @keyframes s{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+    .switch{display:inline-flex;align-items:center;gap:8px}
+    .switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:#1f2937;position:relative;outline:0;border:1px solid var(--border)}
+    .switch input:checked{background:#0e2e36;border-color:#16434c}
+    .switch input::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#93c5fd;transition:.2s}
+    .switch input:checked::after{left:20px;background:#67e8f9}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap row" style="align-items:center">
+      <h1>💳 Credit Card Tracker <span class="badge">Local</span></h1>
+      <div class="spacer"></div>
+      <button class="btn" id="btnExport" title="Exportar JSON">⬇️ Exportar</button>
+      <label class="btn" for="fileImport" title="Importar JSON">⬆️ Importar</label>
+      <input type="file" id="fileImport" accept="application/json" hidden>
+      <button class="btn" id="btnSettings" title="Ajustes">⚙️ Ajustes</button>
+    </div>
+  </header>
+
+  <main class="wrap grid" id="app">
+    <section class="card">
+      <div class="row" style="align-items:center;gap:10px">
+        <h2>Tarjetas</h2>
+        <span class="sub">Administra límites, fechas y saldos</span>
+        <div class="spacer"></div>
+        <button class="btn primary" id="btnNewCard">➕ Nueva tarjeta</button>
+      </div>
+
+      <div class="toolbar">
+        <div class="chip">Total tarjetas: <b id="statCards">0</b></div>
+        <div class="chip">Deuda total: <b class="money" id="statDebt">$0.00</b></div>
+        <div class="chip">Crédito disponible: <b class="money" id="statAvail">$0.00</b></div>
+      </div>
+
+      <div id="cardsList" class="row" style="margin-top:12px"></div>
+    </section>
+
+    <aside class="rightcol">
+      <section class="card">
+        <div class="row" style="align-items:center">
+          <h2>Movimientos</h2>
+          <div class="spacer"></div>
+          <button class="btn good" id="btnNewTx">➕ Agregar</button>
+        </div>
+        <div class="toolbar">
+          <select id="fCard"></select>
+          <select id="fType">
+            <option value="">Tipo: todos</option>
+            <option value="expense">Gasto</option>
+            <option value="payment">Pago/Abono</option>
+          </select>
+          <select id="fCat"></select>
+          <input type="date" id="fFrom" />
+          <input type="date" id="fTo" />
+          <input id="fSearch" placeholder="Buscar descripción..." />
+          <button class="btn" id="btnClearFilters">Limpiar</button>
+        </div>
+        <div style="overflow:auto">
+          <table id="txTable">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tarjeta</th>
+                <th>Tipo</th>
+                <th>Categoría</th>
+                <th>Descripción</th>
+                <th style="text-align:right">Monto</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row" style="align-items:center">
+          <h2>Asistente IA</h2>
+          <div class="spacer"></div>
+          <button class="btn" id="btnIASettings">🔑 API</button>
+        </div>
+        <div class="sub" style="margin-bottom:8px">Haz preguntas sobre tus tarjetas y movimientos. La IA solo ve tus datos locales.</div>
+        <div id="chat" class="chat"></div>
+        <div class="row" style="gap:8px;margin-top:8px">
+          <input id="iaQuestion" placeholder="Ej: ¿Cuánto debo en la tarjeta Azul y cuándo vence?" style="flex:1" />
+          <button class="btn primary" id="btnAsk">Preguntar</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <div class="footer">Hecho con ❤️ • Todo se guarda en tu navegador (localStorage)</div>
+
+  <!-- MODALS -->
+  <dialog id="dlgCard">
+    <form class="modal" method="dialog">
+      <header class="row wrap" style="align-items:center">
+        <h3>Tarjeta</h3>
+        <div class="spacer"></div>
+        <button class="btn" value="close">✖️</button>
+      </header>
+      <div class="content">
+        <input type="hidden" id="cardId" />
+        <div class="kv">
+          <div>
+            <label>Nombre/Nickname</label>
+            <input id="cardName" required placeholder="Ej. Azul, Travel, etc" />
+          </div>
+          <div>
+            <label>Banco / Emisor</label>
+            <input id="cardBank" placeholder="Opcional" />
+          </div>
+          <div>
+            <label>Límite de crédito (USD)</label>
+            <input id="cardLimit" type="number" min="0" step="0.01" required />
+          </div>
+          <div>
+            <label>Día de corte (1-28)</label>
+            <input id="cardCut" type="number" min="1" max="28" required />
+          </div>
+          <div>
+            <label>Días para pagar después del corte</label>
+            <input id="cardDueAfter" type="number" min="1" max="60" value="20" required />
+          </div>
+          <div>
+            <label>Tasa interés mensual % (opcional)</label>
+            <input id="cardAPR" type="number" min="0" step="0.01" placeholder="0 = no calcular" />
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" value="close">Cancelar</button>
+        <button class="btn primary" id="saveCard" value="default">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgTx">
+    <form class="modal" method="dialog">
+      <header class="row wrap" style="align-items:center">
+        <h3>Movimiento</h3>
+        <div class="spacer"></div>
+        <button class="btn" value="close">✖️</button>
+      </header>
+      <div class="content">
+        <input type="hidden" id="txId" />
+        <div class="kv">
+          <div>
+            <label>Fecha</label>
+            <input id="txDate" type="date" required />
+          </div>
+          <div>
+            <label>Tarjeta</label>
+            <select id="txCard" required></select>
+          </div>
+          <div>
+            <label>Tipo</label>
+            <select id="txType" required>
+              <option value="expense">Gasto</option>
+              <option value="payment">Pago/Abono</option>
+            </select>
+          </div>
+          <div>
+            <label>Monto (USD)</label>
+            <input id="txAmount" type="number" min="0" step="0.01" required />
+          </div>
+          <div>
+            <label>Categoría</label>
+            <select id="txCat"></select>
+          </div>
+          <div>
+            <label>Descripción</label>
+            <input id="txDesc" placeholder="Opcional" />
+          </div>
+        </div>
+        <details style="margin-top:8px">
+          <summary>Opciones avanzadas</summary>
+          <div class="kv" style="margin-top:8px">
+            <div>
+              <label>Compra a cuotas (meses)</label>
+              <input id="txInstallments" type="number" min="0" step="1" placeholder="0 = normal" />
+            </div>
+            <div>
+              <label>Meses restantes</label>
+              <input id="txRemaining" type="number" min="0" step="1" placeholder="Autocalculado" />
+            </div>
+          </div>
+        </details>
+      </div>
+      <div class="actions">
+        <button class="btn" value="close">Cancelar</button>
+        <button class="btn primary" id="saveTx" value="default">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgSettings">
+    <form class="modal" method="dialog">
+      <header class="row wrap" style="align-items:center">
+        <h3>Ajustes</h3>
+        <div class="spacer"></div>
+        <button class="btn" value="close">✖️</button>
+      </header>
+      <div class="content">
+        <div class="kv">
+          <div>
+            <label>Moneda (solo visual)</label>
+            <input id="setCurrency" placeholder="$" maxlength="3" />
+          </div>
+          <div>
+            <label>Formato numérico (en-US, es-SV, ...)</label>
+            <input id="setLocale" placeholder="es-SV" />
+          </div>
+          <div style="grid-column:1/-1">
+            <label>Categorías (separadas por coma)</label>
+            <input id="setCats" placeholder="Supermercado, Gasolina, Online, Viajes, Otros" />
+          </div>
+          <div class="switch" style="grid-column:1/-1">
+            <input type="checkbox" id="setDark" />
+            <label for="setDark">Modo oscuro</label>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" value="close">Cerrar</button>
+        <button class="btn primary" id="saveSettings" value="default">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgIA">
+    <form class="modal" method="dialog">
+      <header class="row wrap" style="align-items:center">
+        <h3>Configuración de IA</h3>
+        <div class="spacer"></div>
+        <button class="btn" value="close">✖️</button>
+      </header>
+      <div class="content">
+        <div class="kv">
+          <div style="grid-column:1/-1">
+            <label>API Key de OpenAI (se guarda localmente)</label>
+            <input id="openaiKey" placeholder="sk-..." />
+          </div>
+          <div>
+            <label>Modelo</label>
+            <input id="openaiModel" value="gpt-4o-mini" />
+          </div>
+          <div>
+            <label>Incluir detalle de movimientos</label>
+            <select id="openaiDetail">
+              <option value="summary">Solo resumen</option>
+              <option value="full">Completo (puede ser largo)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" value="close">Cerrar</button>
+        <button class="btn primary" id="saveIA" value="default">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+  // ------------------ Storage Layer ------------------
+  const LS = {
+    get(k,def){ try{ return JSON.parse(localStorage.getItem(k)) ?? def }catch(e){ return def } },
+    set(k,v){ localStorage.setItem(k, JSON.stringify(v)) }
+  }
+  const SKEY={
+    cards:'cct_cards', tx:'cct_tx', cats:'cct_categories', set:'cct_settings', ia:'cct_ia'
+  }
+  const todayStr = () => new Date().toISOString().slice(0,10)
+
+  // Defaults
+  if(!LS.get(SKEY.cats)) LS.set(SKEY.cats,["Supermercado","Gasolina","Online","Restaurantes","Suscripciones","Viajes","Otros"])
+  if(!LS.get(SKEY.set)) LS.set(SKEY.set,{currency:"$", locale:"es-SV", dark:true})
+  if(!LS.get(SKEY.cards)) LS.set(SKEY.cards,[])
+  if(!LS.get(SKEY.tx)) LS.set(SKEY.tx,[])
+  if(!LS.get(SKEY.ia)) LS.set(SKEY.ia,{key:"", model:"gpt-4o-mini", detail:"summary"})
+
+  // ------------------ Helpers ------------------
+  const fmtMoney = (n) => {
+    const {locale, currency} = LS.get(SKEY.set)
+    const f = new Intl.NumberFormat(locale||'es-SV', {minimumFractionDigits:2, maximumFractionDigits:2})
+    return (currency||'$') + f.format(n||0)
+  }
+  const el = sel => document.querySelector(sel)
+  const ce = (tag,cls,html) => { const e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e }
+
+  const byId = (arr,id) => arr.find(x=>x.id===id)
+  const uid = () => Math.random().toString(36).slice(2,10)
+
+  function nextDates(cutDay, dueAfter){
+    const now = new Date()
+    const y = now.getFullYear(), m = now.getMonth()
+    const thisCut = new Date(y, m, Math.min(cutDay, 28))
+    let nextCut = new Date(y, m, Math.min(cutDay, 28))
+    if(now > thisCut) nextCut = new Date(y, m+1, Math.min(cutDay, 28))
+    const prevCut = new Date(nextCut.getFullYear(), nextCut.getMonth()-1, Math.min(cutDay,28))
+    const due = new Date(nextCut); due.setDate(due.getDate() + Number(dueAfter||20))
+    const daysToCut = Math.ceil((nextCut - now)/(1000*60*60*24))
+    const daysToDue = Math.ceil((due - now)/(1000*60*60*24))
+    return {prevCut, nextCut, due, daysToCut, daysToDue}
+  }
+
+  function computeBalances(){
+    const cards = LS.get(SKEY.cards,[])
+    const tx = LS.get(SKEY.tx,[])
+    const map = {}
+    for(const c of cards){ map[c.id] = 0 }
+    for(const t of tx){
+      const amt = Number(t.amount)
+      map[t.cardId] = (map[t.cardId]||0) + (t.type==='expense' ? amt : -amt)
+    }
+    return map
+  }
+
+  function cardSummary(card){
+    const balances = computeBalances()
+    const bal = balances[card.id]||0
+    const avail = Math.max(0, Number(card.limit||0) - bal)
+    const {prevCut,nextCut,due,daysToCut,daysToDue} = nextDates(Number(card.cutDay), Number(card.dueAfter))
+
+    return {bal, avail, prevCut, nextCut, due, daysToCut, daysToDue}
+  }
+
+  function within(str, q){ return (str||'').toLowerCase().includes((q||'').toLowerCase()) }
+
+  // ------------------ Render Cards ------------------
+  function renderCards(){
+    const cards = LS.get(SKEY.cards,[])
+    const container = el('#cardsList')
+    container.innerHTML = ''
+
+    const totals = {cards:cards.length, debt:0, limit:0}
+    const balances = computeBalances()
+
+    for(const c of cards){
+      const {bal, avail, nextCut, due, daysToCut, daysToDue} = cardSummary(c)
+      totals.debt += bal
+      totals.limit += Number(c.limit||0)
+
+      const box = ce('div','card', '')
+      box.style.flex = '1 1 340px'
+
+      const header = ce('div','row')
+      header.style.alignItems='center'
+      header.innerHTML = `<div>
+        <div style="font-size:15px;font-weight:600">${c.name} <span class="sub">${c.bank?('• '+c.bank):''}</span></div>
+        <div class="sub">Corte día ${c.cutDay} • Paga ${c.dueAfter} días después</div>
+      </div>`
+      const actions = ce('div','row')
+      actions.style.marginLeft='auto'
+      actions.style.gap='8px'
+      const btnEdit = ce('button','btn','✏️ Editar'); btnEdit.type='button'; btnEdit.addEventListener('click',()=>openCard(c))
+      const btnDel = ce('button','btn danger','🗑️ Eliminar'); btnDel.type='button'; btnDel.setAttribute('data-del-card', c.id); btnDel.title='Eliminar';
+      actions.append(btnEdit,btnDel)
+      header.append(actions)
+
+      const grid = ce('div','kv')
+      grid.innerHTML = `
+        <div class="chip">Límite: <b class="money">${fmtMoney(Number(c.limit||0))}</b></div>
+        <div class="chip">Saldo: <b class="money ${((bal>0)?'bad':'ok')}">${fmtMoney(bal)}</b></div>
+        <div class="chip">Disponible: <b class="money ${avail>0?'ok':'bad'}">${fmtMoney(avail)}</b></div>
+        <div class="chip">Próx. corte: <b>${nextCut.toLocaleDateString()}</b> <span class="pill ${daysToCut<=3?'warn':''}">${daysToCut} días</span></div>
+        <div class="chip">Vence pago: <b>${due.toLocaleDateString()}</b> <span class="pill ${daysToDue<=5?'warn':''}">${daysToDue} días</span></div>
+        <div class="chip">Interés mensual: <b>${Number(c.apr||0)}%</b></div>
+      `
+
+      box.append(header, grid)
+      container.append(box)
+    }
+
+    el('#statCards').textContent = totals.cards
+    el('#statDebt').textContent = fmtMoney(totals.debt)
+    el('#statAvail').textContent = fmtMoney(Math.max(0, totals.limit - totals.debt))
+
+    // refresh filters card list
+    const fCard = el('#fCard'); const txCard = el('#txCard')
+    const opts = ['<option value="">Tarjeta: todas</option>'].concat(cards.map(c=>`<option value="${c.id}">${c.name}</option>`))
+    fCard.innerHTML = opts.join('')
+    txCard.innerHTML = ['<option disabled selected hidden>Selecciona...</option>'].concat(cards.map(c=>`<option value="${c.id}">${c.name}</option>`)).join('')
+  }
+
+  // ------------------ Cards CRUD ------------------
+  function openCard(c=null){
+    el('#cardId').value = c?.id || ''
+    el('#cardName').value = c?.name || ''
+    el('#cardBank').value = c?.bank || ''
+    el('#cardLimit').value = c?.limit || ''
+    el('#cardCut').value = c?.cutDay || 1
+    el('#cardDueAfter').value = c?.dueAfter || 20
+    el('#cardAPR').value = c?.apr || ''
+    el('#dlgCard').showModal()
+  }
+  function saveCard(){
+    const id = el('#cardId').value || uid()
+    const obj = {
+      id,
+      name: el('#cardName').value.trim(),
+      bank: el('#cardBank').value.trim(),
+      limit: Number(el('#cardLimit').value||0),
+      cutDay: Number(el('#cardCut').value||1),
+      dueAfter: Number(el('#cardDueAfter').value||20),
+      apr: Number(el('#cardAPR').value||0)
+    }
+    if(!obj.name || obj.limit<=0){ alert('Nombre y límite son obligatorios'); return }
+    const cards = LS.get(SKEY.cards,[])
+    const i = cards.findIndex(x=>x.id===obj.id)
+    if(i>=0) cards[i]=obj; else cards.push(obj)
+    LS.set(SKEY.cards,cards)
+    el('#dlgCard').close()
+    renderCards(); renderTx()
+  }
+  function delCard(id, force=false){
+    if(!force && !confirm('¿Eliminar tarjeta y sus referencias en movimientos?')) return
+    LS.set(SKEY.cards, LS.get(SKEY.cards,[]).filter(x=>x.id!==id))
+    // No borra movimientos, pero deja el cardId huérfano; opción: limpiar
+    const tx = LS.get(SKEY.tx,[]).map(t=> (t.cardId===id? {...t, cardId:""}: t))
+    LS.set(SKEY.tx, tx)
+    renderCards(); renderTx()
+  }
+
+  // ------------------ Transactions ------------------
+  function openTx(t=null){
+    const cards = LS.get(SKEY.cards,[])
+    if(cards.length===0){ alert('Crea una tarjeta primero'); return }
+    el('#txId').value = t?.id || ''
+    el('#txDate').value = t?.date || todayStr()
+    el('#txCard').value = t?.cardId || cards[0].id
+    el('#txType').value = t?.type || 'expense'
+    el('#txAmount').value = t? Number(t.amount) : ''
+    el('#txDesc').value = t?.desc || ''
+
+    // categories
+    const cats = LS.get(SKEY.cats,[])
+    const sel = el('#txCat')
+    sel.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('')
+    sel.value = t?.category || cats[0]
+
+    el('#txInstallments').value = t?.installments || ''
+    el('#txRemaining').value = t?.remaining || ''
+
+    el('#dlgTx').showModal()
+  }
+
+  function saveTx(){
+    const obj = {
+      id: el('#txId').value || uid(),
+      date: el('#txDate').value,
+      cardId: el('#txCard').value,
+      type: el('#txType').value,
+      amount: Number(el('#txAmount').value||0),
+      category: el('#txCat').value,
+      desc: el('#txDesc').value.trim(),
+      installments: Number(el('#txInstallments').value||0),
+      remaining: Number(el('#txRemaining').value||0)
+    }
+    if(!obj.date || !obj.cardId || !obj.type || obj.amount<=0){ alert('Completa fecha, tarjeta, tipo y monto'); return }
+    const tx = LS.get(SKEY.tx,[])
+    const i = tx.findIndex(x=>x.id===obj.id)
+    if(i>=0) tx[i]=obj; else tx.unshift(obj) // último primero
+    LS.set(SKEY.tx, tx)
+    el('#dlgTx').close()
+    renderCards(); renderTx()
+  }
+
+  function delTx(id, force=false){
+    if(!force && !confirm('¿Eliminar movimiento?')) return
+    LS.set(SKEY.tx, LS.get(SKEY.tx,[]).filter(x=>x.id!==id))
+    renderCards(); renderTx()
+  }
+
+  function renderTx(){
+    const tbody = el('#txTable tbody'); tbody.innerHTML=''
+    const cards = LS.get(SKEY.cards,[])
+    const cats = LS.get(SKEY.cats,[])
+    // populate filters
+    el('#fCat').innerHTML = ['<option value="">Categoría: todas</option>'].concat(cats.map(c=>`<option value="${c}">${c}</option>`)).join('')
+
+    const q = {
+      card: el('#fCard').value,
+      type: el('#fType').value,
+      cat: el('#fCat').value,
+      from: el('#fFrom').value,
+      to: el('#fTo').value,
+      search: el('#fSearch').value
+    }
+
+    let rows = LS.get(SKEY.tx,[])
+    if(q.card) rows = rows.filter(r=>r.cardId===q.card)
+    if(q.type) rows = rows.filter(r=>r.type===q.type)
+    if(q.cat) rows = rows.filter(r=>r.category===q.cat)
+    if(q.from) rows = rows.filter(r=>r.date>=q.from)
+    if(q.to) rows = rows.filter(r=>r.date<=q.to)
+    if(q.search) rows = rows.filter(r=> within(r.desc, q.search))
+
+    for(const r of rows){
+      const tr = document.createElement('tr')
+      const tdDate = document.createElement('td'); tdDate.textContent = r.date
+      const tdCard = document.createElement('td'); tdCard.textContent = (byId(cards,r.cardId)?.name || '—')
+      const tdType = document.createElement('td'); tdType.innerHTML = r.type==='expense'?'<span class="bad">Gasto</span>':'<span class="ok">Pago</span>'
+      const tdCat  = document.createElement('td'); tdCat.textContent = r.category||'—'
+      const tdDesc = document.createElement('td'); tdDesc.textContent = r.desc||''
+      const tdAmt  = document.createElement('td'); tdAmt.style.textAlign='right'; tdAmt.className = 'money ' + (r.type==='expense'?'bad':'ok'); tdAmt.textContent = fmtMoney(r.amount)
+      const tdAct  = document.createElement('td'); tdAct.style.textAlign='right'
+
+      const btnE = ce('button','btn','✏️');
+      btnE.title = 'Editar';
+      btnE.addEventListener('click',()=>openTx(r))
+      const btnD = ce('button','btn danger','🗑️');
+      btnD.title = 'Eliminar';
+      btnD.type = 'button';
+      btnD.setAttribute('data-del-tx', r.id);
+      tdAct.append(btnE, btnD)
+
+      tr.append(tdDate,tdCard,tdType,tdCat,tdDesc,tdAmt,tdAct)
+      tbody.append(tr)
+    }
+  }
+
+  // ------------------ Settings & Categories ------------------
+  function openSettings(){
+    const s = LS.get(SKEY.set)
+    el('#setCurrency').value = s.currency||'$'
+    el('#setLocale').value = s.locale||'es-SV'
+    el('#setDark').checked = s.dark!==false
+    el('#setCats').value = (LS.get(SKEY.cats)||[]).join(', ')
+    el('#dlgSettings').showModal()
+  }
+  function saveSettings(){
+    const s = LS.get(SKEY.set)
+    s.currency = el('#setCurrency').value || '$'
+    s.locale = el('#setLocale').value || 'es-SV'
+    s.dark = el('#setDark').checked
+    LS.set(SKEY.set, s)
+    const cats = el('#setCats').value.split(',').map(x=>x.trim()).filter(Boolean)
+    if(cats.length) LS.set(SKEY.cats, cats)
+    el('#dlgSettings').close()
+    renderCards(); renderTx(); applyTheme()
+  }
+  function applyTheme(){
+    const s = LS.get(SKEY.set)
+    document.documentElement.style.colorScheme = s.dark!==false ? 'dark' : 'light'
+  }
+
+  // ------------------ Export / Import ------------------
+  function exportData(){
+    const data = {
+      cards: LS.get(SKEY.cards,[]),
+      tx: LS.get(SKEY.tx,[]),
+      categories: LS.get(SKEY.cats,[]),
+      settings: LS.get(SKEY.set,{}),
+      ia: LS.get(SKEY.ia,{})
+    }
+    const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'})
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob); a.download = 'credit-card-tracker.json'; a.click()
+  }
+  function importData(file){
+    const r = new FileReader()
+    r.onload = () => {
+      try{
+        const obj = JSON.parse(r.result)
+        if(obj.cards) LS.set(SKEY.cards, obj.cards)
+        if(obj.tx) LS.set(SKEY.tx, obj.tx)
+        if(obj.categories) LS.set(SKEY.cats, obj.categories)
+        if(obj.settings) LS.set(SKEY.set, obj.settings)
+        if(obj.ia) LS.set(SKEY.ia, obj.ia)
+        renderCards(); renderTx(); applyTheme(); alert('Importado correctamente')
+      }catch(e){ alert('Archivo inválido') }
+    }
+    r.readAsText(file)
+  }
+
+  // ------------------ IA Assistant ------------------
+  function openIASettings(){
+    const s = LS.get(SKEY.ia)
+    el('#openaiKey').value = s.key||''
+    el('#openaiModel').value = s.model||'gpt-4o-mini'
+    el('#openaiDetail').value = s.detail||'summary'
+    el('#dlgIA').showModal()
+  }
+  function saveIA(){
+    const ia = LS.get(SKEY.ia)
+    ia.key = el('#openaiKey').value.trim()
+    ia.model = el('#openaiModel').value.trim()||'gpt-4o-mini'
+    ia.detail = el('#openaiDetail').value
+    LS.set(SKEY.ia, ia)
+    el('#dlgIA').close()
+  }
+
+  function pushChat(role, text){
+    const chat = el('#chat')
+    const b = ce('div','bubble '+(role==='user'?'me':''))
+    b.textContent = text
+    chat.append(b)
+    chat.scrollTop = chat.scrollHeight
+  }
+
+  async function askIA(){
+    const q = el('#iaQuestion').value.trim()
+    if(!q) return
+    pushChat('user', q)
+    el('#iaQuestion').value = ''
+
+    const ia = LS.get(SKEY.ia)
+    if(!ia.key){ pushChat('assistant','Primero configura tu API key (botón 🔑 API).'); return }
+
+    const state = {
+      now: new Date().toISOString(),
+      settings: LS.get(SKEY.set,{}),
+      cards: LS.get(SKEY.cards,[]).map(c=>({
+        ...c,
+        summary: cardSummary(c)
+      })),
+      tx: ia.detail==='full' ? LS.get(SKEY.tx,[]) : summarizeTx()
+    }
+
+    const sys = `Eres un asistente financiero para una app local de tarjetas de crédito.\n\nREGLAS:\n- Responde en español, claro y conciso.\n- Usa SOLO los datos JSON que te paso.\n- Si falta información, dilo explícitamente.\n- Puedes calcular totales, próximas fechas de corte y de pago, días restantes y compras en período de gracia (compras después del corte anterior y antes del próximo).\n- Si el usuario pide recomendaciones, limita a sugerencias prácticas basadas en sus propias fechas y saldos.\n- Formatea cantidades en USD con dos decimales y usa fechas legibles.\n`;
+
+    const user = `Pregunta: ${q}\n\nDatos JSON:\n${JSON.stringify(state)}`
+
+    // skeleton
+    const skeleton = ce('div','bubble')
+    skeleton.innerHTML = '<div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:80%;margin-top:6px"></div>'
+    el('#chat').append(skeleton)
+    el('#chat').scrollTop = el('#chat').scrollHeight
+
+    try{
+      const res = await fetch('https://api.openai.com/v1/chat/completions',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer '+ia.key
+        },
+        body: JSON.stringify({
+          model: ia.model||'gpt-4o-mini',
+          messages:[
+            {role:'system', content: sys},
+            {role:'user', content: user}
+          ],
+          temperature:0.2
+        })
+      })
+      if(!res.ok){ throw new Error('Código '+res.status) }
+      const data = await res.json()
+      const text = data.choices?.[0]?.message?.content?.trim() || 'Sin respuesta'
+      skeleton.remove(); pushChat('assistant', text)
+    }catch(err){
+      skeleton.remove(); pushChat('assistant', 'Error al consultar la IA: '+err.message)
+    }
+  }
+
+  function summarizeTx(){
+    const tx = LS.get(SKEY.tx,[])
+    const out = {
+      totalCompras:0, totalPagos:0, porTarjeta:{}, porCategoria:{}, recientes: tx.slice(0,10)
+    }
+    for(const t of tx){
+      if(t.type==='expense') out.totalCompras += Number(t.amount)
+      else out.totalPagos += Number(t.amount)
+      const k = t.cardId || 'sinTarjeta'
+      out.porTarjeta[k] = out.porTarjeta[k] || {compras:0,pagos:0}
+      if(t.type==='expense') out.porTarjeta[k].compras += Number(t.amount) 
+      else out.porTarjeta[k].pagos += Number(t.amount)
+      const c = t.category || 'Otros'
+      out.porCategoria[c] = (out.porCategoria[c]||0) + Number(t.amount) * (t.type==='expense'?1:-1)
+    }
+    return out
+  }
+
+  // ------------------ Events ------------------
+  el('#btnNewCard').onclick = () => openCard()
+  el('#saveCard').onclick = (e)=>{ e.preventDefault(); saveCard() }
+
+  el('#btnNewTx').onclick = () => openTx()
+  el('#saveTx').onclick = (e)=>{ e.preventDefault(); saveTx() }
+
+  el('#btnSettings').onclick = openSettings
+  el('#saveSettings').onclick = (e)=>{ e.preventDefault(); saveSettings() }
+
+  el('#btnExport').onclick = exportData
+  el('#fileImport').addEventListener('change', (ev)=>{ const f=ev.target.files?.[0]; if(f) importData(f); ev.target.value='' })
+
+  el('#btnIASettings').onclick = openIASettings
+  el('#saveIA').onclick = (e)=>{ e.preventDefault(); saveIA() }
+
+  el('#btnAsk').onclick = askIA
+  el('#iaQuestion').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); askIA() } })
+
+  // Filters
+  ;['#fCard','#fType','#fCat','#fFrom','#fTo','#fSearch'].forEach(sel=>{
+    el(sel).addEventListener(sel==='#fSearch'?'input':'change', renderTx)
+  })
+  el('#btnClearFilters').onclick = ()=>{ ['#fCard','#fType','#fCat','#fFrom','#fTo','#fSearch'].forEach(s=>el(s).value=''); renderTx() }
+
+  // Init
+  applyTheme(); renderCards(); renderTx()
+
+  // Global event delegation for delete buttons (robust against re-render)
+  document.addEventListener('click', (e)=>{
+    let target = e.target
+    if(!(target instanceof Element)) target = target?.parentElement
+    if(!target) return
+    const btnCard = target.closest('[data-del-card]')
+    if(btnCard){ e.preventDefault(); const id = btnCard.getAttribute('data-del-card'); if(id) delCard(id) }
+    const btnTx = target.closest('[data-del-tx]')
+    if(btnTx){ e.preventDefault(); const id = btnTx.getAttribute('data-del-tx'); if(id) delTx(id) }
+  })
+  pushChat('assistant','¡Hola! Soy tu asistente de tarjetas. Pregúntame por saldos, próximas fechas de pago, período de gracia o gastos por categoría ✨')
+
+  // ------------------ Self-tests (simple, no UI) ------------------
+  ;(function runTests(){
+    try{
+      // Test 1: crear tarjeta mínima y verificar resumen
+      const cards0 = LS.get(SKEY.cards,[])
+      if(cards0.length===0){
+        const testCard = {id:'T1', name:'Test', bank:'Demo', limit:1000, cutDay:10, dueAfter:20, apr:0}
+        LS.set(SKEY.cards,[testCard])
+        const sum = cardSummary(testCard)
+        console.assert(typeof sum.daysToCut === 'number', 'daysToCut debe ser número')
+      }
+      // Test 2: agregar gasto y pago y validar signo
+      const before = computeBalances()
+      const tx = LS.get(SKEY.tx,[])
+      tx.unshift({id:'X1', date: todayStr(), cardId: LS.get(SKEY.cards,[])[0]?.id || 'T1', type:'expense', amount:100, category:'Otros', desc:'Test gasto'})
+      tx.unshift({id:'X2', date: todayStr(), cardId: LS.get(SKEY.cards,[])[0]?.id || 'T1', type:'payment', amount:40, category:'Otros', desc:'Test pago'})
+      LS.set(SKEY.tx, tx)
+      const after = computeBalances()
+      const cid = LS.get(SKEY.cards,[])[0]?.id || 'T1'
+      console.assert((after[cid] - (before[cid]||0)) === 60, 'Balance debería aumentar neto 60')
+      // Test 3: borrar movimiento y validar que ya no exista
+      const txBefore = LS.get(SKEY.tx,[])
+      const toDel = txBefore.find(t=>t.id==='X1')?.id
+      if(toDel){ delTx(toDel, true); const exists = LS.get(SKEY.tx,[]).some(t=>t.id===toDel); console.assert(!exists, 'Movimiento X1 debería estar eliminado') }
+      // Test 4: eliminar tarjeta (forzado, sin confirm) debe dejar cardId vacío en movimientos
+      const cardsNow = LS.get(SKEY.cards,[]); if(cardsNow[0]){ const idc = cardsNow[0].id; delCard(idc,true); const orphaned = LS.get(SKEY.tx,[]).every(t=>t.cardId!==idc); console.assert(orphaned, 'Movs deben quedar sin cardId del eliminado') }
+      console.log('✅ Tests básicos OK')
+    }catch(e){ console.error('❌ Tests fallaron:', e) }
+  })()
+  </script>
+</body>
+</html>
