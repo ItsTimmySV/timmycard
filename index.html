@@ -48,7 +48,7 @@
     .card h2{margin:0 0 10px;font-size:16px}
     .sub{color:var(--muted);font-size:12px}
 
-    .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+    .toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-top:12px}
     input,select,textarea{background:var(--input);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:10px;outline:0}
     input[type="date"]{padding:7px 10px}
     label{font-size:12px;color:var(--muted)}
@@ -61,7 +61,10 @@
     tr:hover td{background:#0a1321}
     /* Responsive table: hide less-critical columns on small screens */
     @media (max-width: 650px){
-      #txTable th:nth-child(2), #txTable td:nth-child(2){display:none} /* Tarjeta */
+      #txTable th:nth-child(2), #txTable td:nth-child(2){display:none}
+      #txTable th:nth-child(5), #txTable td:nth-child(5){display:none}
+      #txTable th, #txTable td{padding:8px;font-size:13px}
+    } /* Tarjeta */
       #txTable th:nth-child(5), #txTable td:nth-child(5){display:none} /* Descripción */
     }
     .chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px}
@@ -72,7 +75,7 @@
 
     /* Modal */
     dialog{border:none;padding:0;background:transparent}
-    .modal{width:min(560px,92vw);background:#0b0f1a;border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+    .modal{width:min(560px,92vw);max-height:90vh;overflow:auto;background:#0b0f1a;border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
     .modal header{position:sticky;top:0;background:transparent;border:none}
     .modal .content{padding:16px}
     .modal h3{margin:0;font-size:16px}
@@ -186,7 +189,7 @@
       <header class="row wrap" style="align-items:center">
         <h3>Tarjeta</h3>
         <div class="spacer"></div>
-        <button class="btn" value="close">✖️</button>
+        <button type="button" class="btn" data-close="dlgCard">✖️</button>
       </header>
       <div class="content">
         <input type="hidden" id="cardId" />
@@ -218,10 +221,11 @@
         </div>
       </div>
       <div class="actions">
-        <button class="btn" value="close">Cancelar</button>
+        <button type="button" class="btn" data-close="dlgCard">Cancelar</button>
         <button class="btn primary" id="saveCard" value="default">Guardar</button>
       </div>
     </form>
+  </dialog>    </form>
   </dialog>
 
   <dialog id="dlgTx">
@@ -229,7 +233,7 @@
       <header class="row wrap" style="align-items:center">
         <h3>Movimiento</h3>
         <div class="spacer"></div>
-        <button class="btn" value="close">✖️</button>
+        <button type="button" class="btn" data-close="dlgTx">✖️</button>
       </header>
       <div class="content">
         <input type="hidden" id="txId" />
@@ -277,10 +281,11 @@
         </details>
       </div>
       <div class="actions">
-        <button class="btn" value="close">Cancelar</button>
+        <button type="button" class="btn" data-close="dlgTx">Cancelar</button>
         <button class="btn primary" id="saveTx" value="default">Guardar</button>
       </div>
     </form>
+  </dialog>    </form>
   </dialog>
 
   <dialog id="dlgSettings">
@@ -288,7 +293,7 @@
       <header class="row wrap" style="align-items:center">
         <h3>Ajustes</h3>
         <div class="spacer"></div>
-        <button class="btn" value="close">✖️</button>
+        <button type="button" class="btn" data-close="dlgSettings">✖️</button>
       </header>
       <div class="content">
         <div class="kv">
@@ -311,10 +316,11 @@
         </div>
       </div>
       <div class="actions">
-        <button class="btn" value="close">Cerrar</button>
+        <button type="button" class="btn" data-close="dlgSettings">Cerrar</button>
         <button class="btn primary" id="saveSettings" value="default">Guardar</button>
       </div>
     </form>
+  </dialog>    </form>
   </dialog>
 
   <dialog id="dlgIA">
@@ -322,7 +328,7 @@
       <header class="row wrap" style="align-items:center">
         <h3>Configuración de IA</h3>
         <div class="spacer"></div>
-        <button class="btn" value="close">✖️</button>
+        <button type="button" class="btn" data-close="dlgIA">✖️</button>
       </header>
       <div class="content">
         <div class="kv">
@@ -344,10 +350,11 @@
         </div>
       </div>
       <div class="actions">
-        <button class="btn" value="close">Cerrar</button>
+        <button type="button" class="btn" data-close="dlgIA">Cerrar</button>
         <button class="btn primary" id="saveIA" value="default">Guardar</button>
       </div>
     </form>
+  </dialog>    </form>
   </dialog>
 
   <script>
@@ -761,6 +768,11 @@
   }
 
   // ------------------ Events ------------------
+  // Botones [data-close] para cerrar modales sin validar campos (evita que los 'required' bloqueen el cierre)
+  document.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-close]');
+    if(btn){ ev.preventDefault(); const id = btn.getAttribute('data-close'); const d = document.getElementById(id); d?.close(); }
+  });
   el('#btnNewCard').onclick = () => openCard()
   el('#saveCard').onclick = (e)=>{ e.preventDefault(); saveCard() }
 
