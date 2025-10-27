@@ -443,7 +443,7 @@
       actions.style.marginLeft='auto'
       actions.style.gap='8px'
       const btnEdit = ce('button','btn','✏️ Editar'); btnEdit.type='button'; btnEdit.addEventListener('click',()=>openCard(c))
-      const btnDel = ce('button','btn danger','🗑️ Eliminar'); btnDel.type='button'; btnDel.setAttribute('data-del-card', c.id); btnDel.title='Eliminar';
+      const btnDel = ce('button','btn danger','🗑️ Eliminar'); btnDel.type='button'; btnDel.setAttribute('data-del-card', c.id); btnDel.title='Eliminar'; btnDel.addEventListener('click',()=>delCard(c.id));
       actions.append(btnEdit,btnDel)
       header.append(actions)
 
@@ -505,8 +505,8 @@
   function delCard(id, force=false){
     if(!force && !confirm('¿Eliminar tarjeta y sus referencias en movimientos?')) return
     LS.set(SKEY.cards, LS.get(SKEY.cards,[]).filter(x=>x.id!==id))
-    // No borra movimientos, pero deja el cardId huérfano; opción: limpiar
-    const tx = LS.get(SKEY.tx,[]).map(t=> (t.cardId===id? {...t, cardId:""}: t))
+    // Elimina también todos los movimientos de esta tarjeta
+    const tx = LS.get(SKEY.tx,[]).filter(t=> t.cardId!==id)
     LS.set(SKEY.tx, tx)
     renderCards(); renderTx()
   }
@@ -602,6 +602,7 @@
       btnD.title = 'Eliminar';
       btnD.type = 'button';
       btnD.setAttribute('data-del-tx', r.id);
+      btnD.addEventListener('click', ()=>delTx(r.id));
       tdAct.append(btnE, btnD)
 
       tr.append(tdDate,tdCard,tdType,tdCat,tdDesc,tdAmt,tdAct)
