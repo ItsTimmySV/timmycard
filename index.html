@@ -41,8 +41,6 @@
     .btn.good{border-color:#1e4f30;background:#0f2916}
     .btn.warn{border-color:#4f3a1e;background:#291f0f}
     .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
-    @media (max-width: 720px){.grid{grid-template-columns:1fr}}
-    @media (max-width: 480px){.wrap{padding:12px} header .wrap{padding:10px}}
     @media (max-width: 980px){.grid{grid-template-columns:1fr}}
     .card{background:linear-gradient(180deg,#0e1220,#0b0f1a);border:1px solid var(--border);border-radius:16px;padding:14px}
     .card h2{margin:0 0 10px;font-size:16px}
@@ -55,15 +53,10 @@
     .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     @media (max-width:700px){.kv{grid-template-columns:1fr}}
 
-    table{width:100%;border-collapse:collapse;table-layout:fixed}
-    th,td{padding:10px;border-bottom:1px dashed #1f2b3d;text-align:left;word-wrap:break-word}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px dashed #1f2b3d;text-align:left}
     th{font-weight:600;color:#cbd5e1}
     tr:hover td{background:#0a1321}
-    /* Responsive table: hide less-critical columns on small screens */
-    @media (max-width: 650px){
-      #txTable th:nth-child(2), #txTable td:nth-child(2){display:none} /* Tarjeta */
-      #txTable th:nth-child(5), #txTable td:nth-child(5){display:none} /* Descripción */
-    }
     .chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px}
     .money{font-variant-numeric:tabular-nums}
 
@@ -92,14 +85,6 @@
     .switch input:checked{background:#0e2e36;border-color:#16434c}
     .switch input::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#93c5fd;transition:.2s}
     .switch input:checked::after{left:20px;background:#67e8f9}
-
-    /* Snackbar (Undo) */
-    .snack{position:fixed;left:50%;bottom:16px;transform:translateX(-50%) translateY(120%);display:flex;gap:8px;align-items:center;background:#0b1426;border:1px solid var(--border);padding:10px 12px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.4);opacity:0;transition:all .25s ease;z-index:50;max-width:92vw}
-    .snack.show{transform:translateX(-50%) translateY(0);opacity:1}
-    .snack .msg{font-size:14px}
-    .snack .btn{padding:6px 10px}
-    .snack .btn.primary{background:#10232a}
-    
   </style>
 </head>
 <body>
@@ -187,13 +172,6 @@
   </main>
 
   <div class="footer">Hecho con ❤️ • Todo se guarda en tu navegador (localStorage)</div>
-
-  <!-- Snackbar Undo -->
-  <div id="snackbar" class="snack" aria-live="polite" aria-atomic="true">
-    <span id="snackMsg" class="msg">Acción realizada</span>
-    <button id="snackUndo" class="btn primary" type="button">Deshacer</button>
-    <button id="snackClose" class="btn" type="button">✖️</button>
-  </div>
 
   <!-- MODALS -->
   <dialog id="dlgCard">
@@ -365,24 +343,6 @@
     </form>
   </dialog>
 
-  <!-- Confirm Modal (custom, sin depender del navegador) -->
-  <dialog id="dlgConfirm">
-    <form class="modal" method="dialog">
-      <header class="row wrap" style="align-items:center">
-        <h3>Confirmar</h3>
-        <div class="spacer"></div>
-        <button class="btn" value="close">✖️</button>
-      </header>
-      <div class="content">
-        <div id="confirmMsg" class="sub"></div>
-      </div>
-      <div class="actions">
-        <button class="btn" value="cancel">Cancelar</button>
-        <button class="btn danger" id="btnConfirmYes" value="default">Eliminar</button>
-      </div>
-    </form>
-  </dialog>
-
   <script>
   // ------------------ Storage Layer ------------------
   const LS = {
@@ -475,8 +435,8 @@
       const actions = ce('div','row')
       actions.style.marginLeft='auto'
       actions.style.gap='8px'
-      const btnEdit = ce('button','btn','✏️ Editar'); btnEdit.type='button'; btnEdit.addEventListener('click',()=>openCard(c))
-      const btnDel = ce('button','btn danger','🗑️ Eliminar'); btnDel.type='button'; btnDel.setAttribute('data-del-card', c.id); btnDel.title='Eliminar'; btnDel.addEventListener('click',()=>delCard(c.id));
+      const btnEdit = ce('button','btn','✏️ Editar'); btnEdit.onclick=()=>openCard(c)
+      const btnDel = ce('button','btn danger','🗑️ Eliminar'); btnDel.onclick=()=>delCard(c.id)
       actions.append(btnEdit,btnDel)
       header.append(actions)
 
@@ -535,35 +495,11 @@
     el('#dlgCard').close()
     renderCards(); renderTx()
   }
-  async function delCard(id, force=false){
-    if(!force){
-      const ok = await uiConfirm('¿Eliminar esta tarjeta y TODOS sus movimientos? Esta acción no se puede deshacer.')
-      if(!ok) return
-    }
-    // Snapshot para deshacer
-    const cardsAll = LS.get(SKEY.cards,[])
-    const txAll = LS.get(SKEY.tx,[])
-    const removedCard = cardsAll.find(c=>c.id===id)
-    const removedTx = txAll.filter(t=>t.cardId===id)
-
-    // Eliminar
-    LS.set(SKEY.cards, cardsAll.filter(x=>x.id!==id))
-    LS.set(SKEY.tx, txAll.filter(t=> t.cardId!==id))
-    renderCards(); renderTx()
-
-    showSnack('Tarjeta eliminada', ()=>{
-      const c = LS.get(SKEY.cards,[]); c.push(removedCard); LS.set(SKEY.cards, c)
-      const t = LS.get(SKEY.tx,[]).concat(removedTx); LS.set(SKEY.tx, t)
-      renderCards(); renderTx()
-    })
-  }{
-    if(!force){
-      const ok = await uiConfirm('¿Eliminar esta tarjeta y TODOS sus movimientos? Esta acción no se puede deshacer.')
-      if(!ok) return
-    }
+  function delCard(id){
+    if(!confirm('¿Eliminar tarjeta y sus referencias en movimientos?')) return
     LS.set(SKEY.cards, LS.get(SKEY.cards,[]).filter(x=>x.id!==id))
-    // Elimina también todos los movimientos de esta tarjeta
-    const tx = LS.get(SKEY.tx,[]).filter(t=> t.cardId!==id)
+    // No borra movimientos, pero deja el cardId huérfano; opción: limpiar
+    const tx = LS.get(SKEY.tx,[]).map(t=> (t.cardId===id? {...t, cardId:""}: t))
     LS.set(SKEY.tx, tx)
     renderCards(); renderTx()
   }
@@ -612,30 +548,8 @@
     renderCards(); renderTx()
   }
 
-  async function delTx(id, force=false){
-    if(!force){
-      const ok = await uiConfirm('¿Eliminar este movimiento?')
-      if(!ok) return
-    }
-    const all = LS.get(SKEY.tx,[])
-    const idx = all.findIndex(x=>x.id===id)
-    const removed = idx>=0 ? all[idx] : null
-    LS.set(SKEY.tx, all.filter(x=>x.id!==id))
-    renderCards(); renderTx()
-
-    if(removed){
-      showSnack('Movimiento eliminado', ()=>{
-        const cur = LS.get(SKEY.tx,[])
-        cur.splice(Math.min(idx, cur.length), 0, removed)
-        LS.set(SKEY.tx, cur)
-        renderCards(); renderTx()
-      })
-    }
-  }{
-    if(!force){
-      const ok = await uiConfirm('¿Eliminar este movimiento?')
-      if(!ok) return
-    }
+  function delTx(id){
+    if(!confirm('¿Eliminar movimiento?')) return
     LS.set(SKEY.tx, LS.get(SKEY.tx,[]).filter(x=>x.id!==id))
     renderCards(); renderTx()
   }
@@ -665,26 +579,19 @@
     if(q.search) rows = rows.filter(r=> within(r.desc, q.search))
 
     for(const r of rows){
-      const tr = document.createElement('tr')
-      const tdDate = document.createElement('td'); tdDate.textContent = r.date
-      const tdCard = document.createElement('td'); tdCard.textContent = (byId(cards,r.cardId)?.name || '—')
-      const tdType = document.createElement('td'); tdType.innerHTML = r.type==='expense'?'<span class="bad">Gasto</span>':'<span class="ok">Pago</span>'
-      const tdCat  = document.createElement('td'); tdCat.textContent = r.category||'—'
-      const tdDesc = document.createElement('td'); tdDesc.textContent = r.desc||''
-      const tdAmt  = document.createElement('td'); tdAmt.style.textAlign='right'; tdAmt.className = 'money ' + (r.type==='expense'?'bad':'ok'); tdAmt.textContent = fmtMoney(r.amount)
-      const tdAct  = document.createElement('td'); tdAct.style.textAlign='right'
-
-      const btnE = ce('button','btn','✏️');
-      btnE.title = 'Editar';
-      btnE.addEventListener('click',()=>openTx(r))
-      const btnD = ce('button','btn danger','🗑️');
-      btnD.title = 'Eliminar';
-      btnD.type = 'button';
-      btnD.setAttribute('data-del-tx', r.id);
-      btnD.addEventListener('click', ()=>delTx(r.id));
-      tdAct.append(btnE, btnD)
-
-      tr.append(tdDate,tdCard,tdType,tdCat,tdDesc,tdAmt,tdAct)
+      const tr = ce('tr')
+      const cardName = byId(cards,r.cardId)?.name || '—'
+      tr.innerHTML = `
+        <td>${r.date}</td>
+        <td>${cardName}</td>
+        <td>${r.type==='expense'?'<span class="bad">Gasto</span>':'<span class="ok">Pago</span>'}</td>
+        <td>${r.category||'—'}</td>
+        <td>${r.desc||''}</td>
+        <td style="text-align:right" class="money ${r.type==='expense'?'bad':'ok'}">${fmtMoney(r.amount)}</td>
+        <td style="text-align:right">
+          <button class="btn" title="Editar" onclick='(${openTx.toString()})(${JSON.stringify(r)})'>✏️</button>
+          <button class="btn danger" title="Eliminar" onclick='(${delTx.toString()})("${r.id}")'>🗑️</button>
+        </td>`
       tbody.append(tr)
     }
   }
@@ -712,6 +619,7 @@
   function applyTheme(){
     const s = LS.get(SKEY.set)
     document.documentElement.style.colorScheme = s.dark!==false ? 'dark' : 'light'
+    // (Paleta mantiene dark theme; podrías invertir si deseas)
   }
 
   // ------------------ Export / Import ------------------
@@ -742,38 +650,6 @@
     }
     r.readAsText(file)
   }
-
-  // ------------------ UI Confirm ------------------
-  function uiConfirm(message){
-    return new Promise((resolve)=>{
-      const dlg = el('#dlgConfirm');
-      const msg = el('#confirmMsg');
-      const yes = el('#btnConfirmYes');
-      msg.textContent = message || '¿Confirmar acción?';
-      const onClose = (ev)=>{ dlg.removeEventListener('close', onClose); resolve(dlg.returnValue === 'default') }
-      dlg.addEventListener('close', onClose, {once:true})
-      dlg.showModal();
-    })
-  }
-
-    // ------------------ Undo Snackbar ------------------
-  let undoTimer = null, undoRestore = null
-  function showSnack(message, onUndo, duration=5000){
-    const bar = el('#snackbar');
-    el('#snackMsg').textContent = message || 'Acción realizada';
-    undoRestore = (typeof onUndo === 'function') ? onUndo : null;
-    bar.classList.add('show');
-    clearTimeout(undoTimer);
-    undoTimer = setTimeout(()=>{ hideSnack() }, duration);
-  }
-  function hideSnack(){
-    const bar = el('#snackbar');
-    bar.classList.remove('show');
-    undoRestore = null;
-    if(undoTimer){ clearTimeout(undoTimer); undoTimer=null }
-  }
-  el('#snackUndo').onclick = ()=>{ try{ if(undoRestore) undoRestore() } finally { hideSnack() } }
-  el('#snackClose').onclick = ()=> hideSnack()
 
   // ------------------ IA Assistant ------------------
   function openIASettings(){
@@ -899,41 +775,7 @@
 
   // Init
   applyTheme(); renderCards(); renderTx()
-
-  // Global event delegation for delete buttons (robust against re-render)
-  // Delegación global de borrado eliminada para evitar doble confirmación.
-  // Se usan listeners directos en los botones de cada fila/tarjeta.
   pushChat('assistant','¡Hola! Soy tu asistente de tarjetas. Pregúntame por saldos, próximas fechas de pago, período de gracia o gastos por categoría ✨')
-
-  // ------------------ Self-tests (simple, no UI) ------------------
-  ;(function runTests(){
-    try{
-      // Test 1: crear tarjeta mínima y verificar resumen
-      const cards0 = LS.get(SKEY.cards,[])
-      if(cards0.length===0){
-        const testCard = {id:'T1', name:'Test', bank:'Demo', limit:1000, cutDay:10, dueAfter:20, apr:0}
-        LS.set(SKEY.cards,[testCard])
-        const sum = cardSummary(testCard)
-        console.assert(typeof sum.daysToCut === 'number', 'daysToCut debe ser número')
-      }
-      // Test 2: agregar gasto y pago y validar signo
-      const before = computeBalances()
-      const tx = LS.get(SKEY.tx,[])
-      tx.unshift({id:'X1', date: todayStr(), cardId: LS.get(SKEY.cards,[])[0]?.id || 'T1', type:'expense', amount:100, category:'Otros', desc:'Test gasto'})
-      tx.unshift({id:'X2', date: todayStr(), cardId: LS.get(SKEY.cards,[])[0]?.id || 'T1', type:'payment', amount:40, category:'Otros', desc:'Test pago'})
-      LS.set(SKEY.tx, tx)
-      const after = computeBalances()
-      const cid = LS.get(SKEY.cards,[])[0]?.id || 'T1'
-      console.assert((after[cid] - (before[cid]||0)) === 60, 'Balance debería aumentar neto 60')
-      // Test 3: borrar movimiento y validar que ya no exista
-      const txBefore = LS.get(SKEY.tx,[])
-      const toDel = txBefore.find(t=>t.id==='X1')?.id
-      if(toDel){ delTx(toDel, true); const exists = LS.get(SKEY.tx,[]).some(t=>t.id===toDel); console.assert(!exists, 'Movimiento X1 debería estar eliminado') }
-      // Test 4: eliminar tarjeta (forzado, sin confirm) debe dejar cardId vacío en movimientos
-      const cardsNow = LS.get(SKEY.cards,[]); if(cardsNow[0]){ const idc = cardsNow[0].id; delCard(idc,true); const orphaned = LS.get(SKEY.tx,[]).every(t=>t.cardId!==idc); console.assert(orphaned, 'Movs deben quedar sin cardId del eliminado') }
-      console.log('✅ Tests básicos OK')
-    }catch(e){ console.error('❌ Tests fallaron:', e) }
-  })()
   </script>
 </body>
 </html>
