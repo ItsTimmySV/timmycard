@@ -92,6 +92,14 @@
     .switch input:checked{background:#0e2e36;border-color:#16434c}
     .switch input::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#93c5fd;transition:.2s}
     .switch input:checked::after{left:20px;background:#67e8f9}
+
+    /* Snackbar (Undo) */
+    .snack{position:fixed;left:50%;bottom:16px;transform:translateX(-50%) translateY(120%);display:flex;gap:8px;align-items:center;background:#0b1426;border:1px solid var(--border);padding:10px 12px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.4);opacity:0;transition:all .25s ease;z-index:50;max-width:92vw}
+    .snack.show{transform:translateX(-50%) translateY(0);opacity:1}
+    .snack .msg{font-size:14px}
+    .snack .btn{padding:6px 10px}
+    .snack .btn.primary{background:#10232a}
+    
   </style>
 </head>
 <body>
@@ -179,6 +187,13 @@
   </main>
 
   <div class="footer">Hecho con ❤️ • Todo se guarda en tu navegador (localStorage)</div>
+
+  <!-- Snackbar Undo -->
+  <div id="snackbar" class="snack" aria-live="polite" aria-atomic="true">
+    <span id="snackMsg" class="msg">Acción realizada</span>
+    <button id="snackUndo" class="btn primary" type="button">Deshacer</button>
+    <button id="snackClose" class="btn" type="button">✖️</button>
+  </div>
 
   <!-- MODALS -->
   <dialog id="dlgCard">
@@ -350,6 +365,24 @@
     </form>
   </dialog>
 
+  <!-- Confirm Modal (custom, sin depender del navegador) -->
+  <dialog id="dlgConfirm">
+    <form class="modal" method="dialog">
+      <header class="row wrap" style="align-items:center">
+        <h3>Confirmar</h3>
+        <div class="spacer"></div>
+        <button class="btn" value="close">✖️</button>
+      </header>
+      <div class="content">
+        <div id="confirmMsg" class="sub"></div>
+      </div>
+      <div class="actions">
+        <button class="btn" value="cancel">Cancelar</button>
+        <button class="btn danger" id="btnConfirmYes" value="default">Eliminar</button>
+      </div>
+    </form>
+  </dialog>
+
   <script>
   // ------------------ Storage Layer ------------------
   const LS = {
@@ -502,8 +535,32 @@
     el('#dlgCard').close()
     renderCards(); renderTx()
   }
-  function delCard(id, force=false){
-    if(!force && !confirm('¿Eliminar tarjeta y sus referencias en movimientos?')) return
+  async function delCard(id, force=false){
+    if(!force){
+      const ok = await uiConfirm('¿Eliminar esta tarjeta y TODOS sus movimientos? Esta acción no se puede deshacer.')
+      if(!ok) return
+    }
+    // Snapshot para deshacer
+    const cardsAll = LS.get(SKEY.cards,[])
+    const txAll = LS.get(SKEY.tx,[])
+    const removedCard = cardsAll.find(c=>c.id===id)
+    const removedTx = txAll.filter(t=>t.cardId===id)
+
+    // Eliminar
+    LS.set(SKEY.cards, cardsAll.filter(x=>x.id!==id))
+    LS.set(SKEY.tx, txAll.filter(t=> t.cardId!==id))
+    renderCards(); renderTx()
+
+    showSnack('Tarjeta eliminada', ()=>{
+      const c = LS.get(SKEY.cards,[]); c.push(removedCard); LS.set(SKEY.cards, c)
+      const t = LS.get(SKEY.tx,[]).concat(removedTx); LS.set(SKEY.tx, t)
+      renderCards(); renderTx()
+    })
+  }{
+    if(!force){
+      const ok = await uiConfirm('¿Eliminar esta tarjeta y TODOS sus movimientos? Esta acción no se puede deshacer.')
+      if(!ok) return
+    }
     LS.set(SKEY.cards, LS.get(SKEY.cards,[]).filter(x=>x.id!==id))
     // Elimina también todos los movimientos de esta tarjeta
     const tx = LS.get(SKEY.tx,[]).filter(t=> t.cardId!==id)
@@ -555,8 +612,30 @@
     renderCards(); renderTx()
   }
 
-  function delTx(id, force=false){
-    if(!force && !confirm('¿Eliminar movimiento?')) return
+  async function delTx(id, force=false){
+    if(!force){
+      const ok = await uiConfirm('¿Eliminar este movimiento?')
+      if(!ok) return
+    }
+    const all = LS.get(SKEY.tx,[])
+    const idx = all.findIndex(x=>x.id===id)
+    const removed = idx>=0 ? all[idx] : null
+    LS.set(SKEY.tx, all.filter(x=>x.id!==id))
+    renderCards(); renderTx()
+
+    if(removed){
+      showSnack('Movimiento eliminado', ()=>{
+        const cur = LS.get(SKEY.tx,[])
+        cur.splice(Math.min(idx, cur.length), 0, removed)
+        LS.set(SKEY.tx, cur)
+        renderCards(); renderTx()
+      })
+    }
+  }{
+    if(!force){
+      const ok = await uiConfirm('¿Eliminar este movimiento?')
+      if(!ok) return
+    }
     LS.set(SKEY.tx, LS.get(SKEY.tx,[]).filter(x=>x.id!==id))
     renderCards(); renderTx()
   }
@@ -663,6 +742,38 @@
     }
     r.readAsText(file)
   }
+
+  // ------------------ UI Confirm ------------------
+  function uiConfirm(message){
+    return new Promise((resolve)=>{
+      const dlg = el('#dlgConfirm');
+      const msg = el('#confirmMsg');
+      const yes = el('#btnConfirmYes');
+      msg.textContent = message || '¿Confirmar acción?';
+      const onClose = (ev)=>{ dlg.removeEventListener('close', onClose); resolve(dlg.returnValue === 'default') }
+      dlg.addEventListener('close', onClose, {once:true})
+      dlg.showModal();
+    })
+  }
+
+    // ------------------ Undo Snackbar ------------------
+  let undoTimer = null, undoRestore = null
+  function showSnack(message, onUndo, duration=5000){
+    const bar = el('#snackbar');
+    el('#snackMsg').textContent = message || 'Acción realizada';
+    undoRestore = (typeof onUndo === 'function') ? onUndo : null;
+    bar.classList.add('show');
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(()=>{ hideSnack() }, duration);
+  }
+  function hideSnack(){
+    const bar = el('#snackbar');
+    bar.classList.remove('show');
+    undoRestore = null;
+    if(undoTimer){ clearTimeout(undoTimer); undoTimer=null }
+  }
+  el('#snackUndo').onclick = ()=>{ try{ if(undoRestore) undoRestore() } finally { hideSnack() } }
+  el('#snackClose').onclick = ()=> hideSnack()
 
   // ------------------ IA Assistant ------------------
   function openIASettings(){
@@ -790,15 +901,8 @@
   applyTheme(); renderCards(); renderTx()
 
   // Global event delegation for delete buttons (robust against re-render)
-  document.addEventListener('click', (e)=>{
-    let target = e.target
-    if(!(target instanceof Element)) target = target?.parentElement
-    if(!target) return
-    const btnCard = target.closest('[data-del-card]')
-    if(btnCard){ e.preventDefault(); const id = btnCard.getAttribute('data-del-card'); if(id) delCard(id) }
-    const btnTx = target.closest('[data-del-tx]')
-    if(btnTx){ e.preventDefault(); const id = btnTx.getAttribute('data-del-tx'); if(id) delTx(id) }
-  })
+  // Delegación global de borrado eliminada para evitar doble confirmación.
+  // Se usan listeners directos en los botones de cada fila/tarjeta.
   pushChat('assistant','¡Hola! Soy tu asistente de tarjetas. Pregúntame por saldos, próximas fechas de pago, período de gracia o gastos por categoría ✨')
 
   // ------------------ Self-tests (simple, no UI) ------------------
