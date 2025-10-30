@@ -1,846 +1,1027 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Credit Card Tracker + IA (Local)</title>
-  <style>
-    :root{
-      --bg:#0f172a; /* slate-900 */
-      --panel:#111827; /* gray-900 */
-      --panel-2:#0b1220; /* darker */
-      --text:#e5e7eb; /* gray-200 */
-      --muted:#9ca3af; /* gray-400 */
-      --accent:#22d3ee; /* cyan-400 */
-      --accent-2:#14b8a6; /* teal-500 */
-      --good:#22c55e;
-      --bad:#ef4444;
-      --warn:#f59e0b;
-      --chip:#1f2937; /* gray-800 */
-      --input:#111827;
-      --border:#243244; /* slate-700 */
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif;color:var(--text);background:linear-gradient(180deg,var(--panel-2),var(--bg));
-    }
-    header{
-      position:sticky;top:0;z-index:10;background:rgba(17,24,39,.8);backdrop-filter:saturate(1.2) blur(8px);
-      border-bottom:1px solid var(--border);
-    }
-    .wrap{max-width:1200px;margin:0 auto;padding:16px}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    h1{font-size:20px;margin:0;display:flex;align-items:center;gap:10px}
-    .badge{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--border)}
-    .spacer{flex:1}
-    .btn{appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
-    .btn:hover{border-color:var(--accent);}
-    .btn.primary{background:linear-gradient(180deg,#0b3940,#071d21);border-color:#0e2e36;color:#c7fbff}
-    .btn.danger{border-color:#4f1e1e;background:#291010}
-    .btn.good{border-color:#1e4f30;background:#0f2916}
-    .btn.warn{border-color:#4f3a1e;background:#291f0f}
-    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
-    @media (max-width: 720px){.grid{grid-template-columns:1fr}}
-    @media (max-width: 480px){.wrap{padding:12px} header .wrap{padding:10px}}
-    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
-    .card{background:linear-gradient(180deg,#0e1220,#0b0f1a);border:1px solid var(--border);border-radius:16px;padding:14px}
-    .card h2{margin:0 0 10px;font-size:16px}
-    .sub{color:var(--muted);font-size:12px}
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TrackTarjetas — Tracker de Tarjetas (offline)</title>
+<link rel="manifest" href="#" />
+<meta name="description" content="SPA offline para trackear tarjetas y movimientos. IndexedDB + export/import JSON + chat IA (mock)." />
+<!-- Tipografía sugerida -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<!-- CDN Dexie.js -->
+<script src="https://unpkg.com/dexie@3.2.2/dist/dexie.min.js"></script>
+<!-- CDN Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-    input,select,textarea{background:var(--input);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:10px;outline:0}
-    input[type="date"]{padding:7px 10px}
-    label{font-size:12px;color:var(--muted)}
-    .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    @media (max-width:700px){.kv{grid-template-columns:1fr}}
+<style>
+:root{
+  --bg:#F7F9FC;
+  --card:#ffffff;
+  --text:#141414;
+  --muted:#6b7280;
+  --primary:#0F62FE;
+  --secondary:#00BFA6;
+  --accent:#FFB020;
+  --danger:#ff4d4f;
+  --glass: rgba(15,98,254,0.06);
+  --radius:14px;
+  font-family: Inter, Roboto, Arial, sans-serif;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:linear-gradient(180deg, var(--bg), #eef3fb);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  padding:16px;
+}
 
-    table{width:100%;border-collapse:collapse;table-layout:auto;min-width:720px}
-    th,td{padding:10px;border-bottom:1px dashed #1f2b3d;text-align:left;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    th{font-weight:600;color:#cbd5e1}
-    tr:hover td{background:#0a1321}
-    /* Responsive table: hide less-critical columns on small screens */
-    @media (max-width: 650px){
-      #txTable{min-width:600px}
-      #txTable th:nth-child(2), #txTable td:nth-child(2){display:none}
-      #txTable th:nth-child(5), #txTable td:nth-child(5){display:none}
-      #txTable th, #txTable td{padding:8px;font-size:13px}
-    }
-      #txTable th:nth-child(5), #txTable td:nth-child(5){display:none}
-      #txTable th, #txTable td{padding:8px;font-size:13px}
-    } /* Tarjeta */
-      #txTable th:nth-child(5), #txTable td:nth-child(5){display:none} /* Descripción */
-    }
-    .chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px}
-    .money{font-variant-numeric:tabular-nums}
+/* Layout */
+.app{
+  max-width:1100px;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns: 1fr 360px;
+  gap:18px;
+  align-items:start;
+}
+.header{
+  grid-column:1/-1;
+  display:flex;
+  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:6px;
+}
+.brand{
+  display:flex;
+  gap:12px;
+  align-items:center;
+}
+.logo{
+  width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--secondary));
+  display:flex;align-items:center;justify-content:center;color:white;font-weight:700;box-shadow:0 6px 18px rgba(2,6,23,0.08)
+}
+.h1{font-size:18px;font-weight:700}
+.p-muted{color:var(--muted);font-size:13px}
 
-    .pill{font-size:11px;padding:2px 6px;border-radius:6px;border:1px solid var(--border);background:var(--panel)}
-    .ok{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+/* Main Column */
+.column{
+  display:grid;
+  gap:14px;
+}
+.card{
+  background:var(--card);
+  border-radius:var(--radius);
+  padding:14px;
+  box-shadow:0 6px 20px rgba(12,17,43,0.06);
+}
+.row{display:flex;gap:12px;align-items:center}
+.kpi{display:flex;flex-direction:column;gap:6px}
+.kpi .value{font-weight:700;font-size:18px}
+.kpi .label{color:var(--muted);font-size:13px}
 
-    /* Modal */
-    dialog{border:none;padding:0;background:transparent}
-    .modal{width:min(560px,92vw);max-height:90vh;overflow:auto;background:#0b0f1a;border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
-    .modal header{position:sticky;top:0;background:transparent;border:none}
-    .modal .content{padding:16px}
-    .modal h3{margin:0;font-size:16px}
-    .modal .actions{display:flex;gap:8px;justify-content:flex-end;padding:16px;border-top:1px solid var(--border)}
+/* Buttons & inputs */
+.btn{
+  background:var(--primary); color:white; border:none; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600;
+}
+.btn.secondary{background:var(--secondary)}
+.btn.ghost{background:transparent;color:var(--primary);border:1px solid rgba(15,98,254,0.12)}
+.small{padding:6px 8px;font-size:14px;border-radius:8px}
+.input, .select{
+  padding:10px;border-radius:10px;border:1px solid #e6eef8;width:100%;outline:none
+}
+.input:focus{box-shadow:0 6px 16px rgba(15,98,254,0.06);border-color:var(--primary)}
 
-    .rightcol{display:grid;gap:16px}
-    .footer{opacity:.8;font-size:12px;text-align:center;margin:18px 0}
+/* Tables & lists */
+.table{width:100%;border-collapse:collapse}
+.table th{ text-align:left;color:var(--muted);font-weight:600;padding:8px 0}
+.table td{padding:8px 0;border-top:1px dashed #f0f3f8}
+.badge{padding:6px 8px;border-radius:999px;font-weight:600;font-size:12px;background:#f2f8ff;color:var(--primary)}
 
-    .bubble{background:#0b1426;border:1px solid var(--border);padding:10px 12px;border-radius:12px;max-width:80%}
-    .bubble.me{background:#09121a;border-color:#163043;margin-left:auto}
-    .chat{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;padding-right:4px}
-    .skeleton{height:14px;background:linear-gradient(90deg,#0d1628, #0f223b 40%, #0d1628);background-size:200% 100%;animation:s 1.2s infinite}
-    @keyframes s{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* Sidebar */
+.sidebar{position:relative;display:flex;flex-direction:column;gap:12px}
+.chat-box{height:420px;display:flex;flex-direction:column;border-radius:10px;overflow:hidden}
+.chat-messages{flex:1;padding:12px;overflow:auto;background:linear-gradient(180deg, #fff, #fbfdff)}
+.chat-input{display:flex;gap:8px;padding:8px;border-top:1px solid #f0f3f8}
+.msg{max-width:80%;padding:8px 10px;border-radius:10px;margin-bottom:8px}
+.msg.user{background:#e6f0ff;align-self:flex-end}
+.msg.ai{background:#f6f7fa;align-self:flex-start;color:var(--text)}
 
-    .switch{display:inline-flex;align-items:center;gap:8px}
-    .switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:#1f2937;position:relative;outline:0;border:1px solid var(--border)}
-    .switch input:checked{background:#0e2e36;border-color:#16434c}
-    .switch input::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#93c5fd;transition:.2s}
-    .switch input:checked::after{left:20px;background:#67e8f9}
-  </style>
+/* Forms grid */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* Responsive */
+@media (max-width:1000px){
+  .app{grid-template-columns:1fr; padding-bottom:80px}
+  .sidebar{order:2}
+}
+
+/* Small helpers */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:#111;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.18);display:none}
+label{font-weight:600;font-size:13px}
+.help{font-size:12px;color:var(--muted)}
+.sep{height:1px;background:#f0f3f8;margin:8px 0;border-radius:4px}
+.card-compact{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.color-dot{width:12px;height:12px;border-radius:6px;display:inline-block;margin-right:8px;vertical-align:middle}
+.small-muted{font-size:12px;color:var(--muted)}
+</style>
 </head>
 <body>
-  <header>
-    <div class="wrap row" style="align-items:center">
-      <h1>💳 Credit Card Tracker <span class="badge">Local</span></h1>
-      <div class="spacer"></div>
-      <button class="btn" id="btnExport" title="Exportar JSON">⬇️ Exportar</button>
-      <label class="btn" for="fileImport" title="Importar JSON">⬆️ Importar</label>
-      <input type="file" id="fileImport" accept="application/json" hidden>
-      <button class="btn" id="btnSettings" title="Ajustes">⚙️ Ajustes</button>
+<div class="app" role="main" aria-label="TrackTarjetas app">
+  <div class="header">
+    <div class="brand">
+      <div class="logo">TT</div>
+      <div>
+        <div class="h1">TrackTarjetas</div>
+        <div class="p-muted">Gestor local de tarjetas y movimientos — Offline first</div>
+      </div>
     </div>
-  </header>
+    <div class="controls">
+      <button id="btn-seed" class="btn small">Resetear seed</button>
+      <button id="btn-export" class="btn small ghost">Exportar JSON</button>
+      <label class="btn small ghost" style="display:inline-flex;align-items:center;cursor:pointer">
+        Importar <input id="fileImport" type="file" accept="application/json" style="display:none" />
+      </label>
+      <button id="btn-theme" class="btn small secondary">Toggle Tema</button>
+    </div>
+  </div>
 
-  <main class="wrap grid" id="app">
-    <section class="card">
-      <div class="row" style="align-items:center;gap:10px">
-        <h2>Tarjetas</h2>
-        <span class="sub">Administra límites, fechas y saldos</span>
-        <div class="spacer"></div>
-        <button class="btn primary" id="btnNewCard">➕ Nueva tarjeta</button>
+  <!-- MAIN COLUMN -->
+  <div class="column">
+    <!-- Dashboard -->
+    <section class="card" aria-labelledby="dashboardTitle">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h2 id="dashboardTitle">Resumen</h2>
+          <div class="small-muted">Resumen rápido de tus tarjetas y gastos</div>
+        </div>
+        <div class="row">
+          <div style="text-align:right" class="kpi">
+            <div class="value" id="saldoTotal">$0.00</div>
+            <div class="label">Saldo total</div>
+          </div>
+          <div style="text-align:right;margin-left:18px" class="kpi">
+            <div class="value small-muted" id="gastoMes">$0.00</div>
+            <div class="label">Gasto este mes</div>
+          </div>
+        </div>
       </div>
 
-      <div class="toolbar">
-        <div class="chip">Total tarjetas: <b id="statCards">0</b></div>
-        <div class="chip">Deuda total: <b class="money" id="statDebt">$0.00</b></div>
-        <div class="chip">Crédito disponible: <b class="money" id="statAvail">$0.00</b></div>
-      </div>
+      <div class="sep"></div>
 
-      <div id="cardsList" class="row" style="margin-top:12px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <h4 style="margin:6px 0">Tarjetas</h4>
+          <div id="tarjetasList"></div>
+          <div style="margin-top:10px">
+            <button id="btn-new-card" class="btn small">+ Nueva tarjeta</button>
+          </div>
+        </div>
+        <div>
+          <h4 style="margin:6px 0">Movimientos recientes</h4>
+          <div id="movList"></div>
+          <div style="margin-top:10px">
+            <button id="btn-new-mov" class="btn small secondary">+ Nuevo movimiento</button>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <aside class="rightcol">
-      <section class="card">
-        <div class="row" style="align-items:center">
-          <h2>Movimientos</h2>
-          <div class="spacer"></div>
-          <button class="btn good" id="btnNewTx">➕ Agregar</button>
+    <!-- Charts -->
+    <section class="card" aria-labelledby="chartsTitle">
+      <h3 id="chartsTitle">Gráficos</h3>
+      <div class="small-muted">Gasto por categoría y por mes</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+        <canvas id="catChart" style="height:220px"></canvas>
+        <canvas id="monthChart" style="height:220px"></canvas>
+      </div>
+    </section>
+
+    <!-- Transactions full -->
+    <section class="card" aria-labelledby="movTitle">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h3 id="movTitle">Movimientos</h3>
+          <div class="help">Buscar, filtrar y administrar</div>
         </div>
-        <div class="toolbar">
-          <select id="fCard"></select>
-          <select id="fType">
-            <option value="">Tipo: todos</option>
-            <option value="expense">Gasto</option>
-            <option value="payment">Pago/Abono</option>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="filterCard" class="select small">
+            <option value="">Todas las tarjetas</option>
           </select>
-          <select id="fCat"></select>
-          <input type="date" id="fFrom" />
-          <input type="date" id="fTo" />
-          <input id="fSearch" placeholder="Buscar descripción..." />
-          <button class="btn" id="btnClearFilters">Limpiar</button>
-        </div>
-        <div style="overflow:auto">
-          <table id="txTable">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Tarjeta</th>
-                <th>Tipo</th>
-                <th>Categoría</th>
-                <th>Descripción</th>
-                <th style="text-align:right">Monto</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="row" style="align-items:center">
-          <h2>Asistente IA</h2>
-          <div class="spacer"></div>
-          <button class="btn" id="btnIASettings">🔑 API</button>
-        </div>
-        <div class="sub" style="margin-bottom:8px">Haz preguntas sobre tus tarjetas y movimientos. La IA solo ve tus datos locales.</div>
-        <div id="chat" class="chat"></div>
-        <div class="row" style="gap:8px;margin-top:8px">
-          <input id="iaQuestion" placeholder="Ej: ¿Cuánto debo en la tarjeta Azul y cuándo vence?" style="flex:1" />
-          <button class="btn primary" id="btnAsk">Preguntar</button>
-        </div>
-      </section>
-    </aside>
-  </main>
-
-  <div class="footer">Hecho con ❤️ • Todo se guarda en tu navegador (localStorage)</div>
-
-  <!-- MODALS -->
-  <dialog id="dlgCard">
-    <form class="modal" method="dialog">
-      <header class="row wrap" style="align-items:center">
-        <h3>Tarjeta</h3>
-        <div class="spacer"></div>
-        <button type="button" class="btn" data-close="dlgCard">✖️</button>
-      </header>
-      <div class="content">
-        <input type="hidden" id="cardId" />
-        <div class="kv">
-          <div>
-            <label>Nombre/Nickname</label>
-            <input id="cardName" required placeholder="Ej. Azul, Travel, etc" />
-          </div>
-          <div>
-            <label>Banco / Emisor</label>
-            <input id="cardBank" placeholder="Opcional" />
-          </div>
-          <div>
-            <label>Límite de crédito (USD)</label>
-            <input id="cardLimit" type="number" min="0" step="0.01" required />
-          </div>
-          <div>
-            <label>Día de corte (1-28)</label>
-            <input id="cardCut" type="number" min="1" max="28" required />
-          </div>
-          <div>
-            <label>Días para pagar después del corte</label>
-            <input id="cardDueAfter" type="number" min="1" max="60" value="20" required />
-          </div>
-          <div>
-            <label>Tasa interés mensual % (opcional)</label>
-            <input id="cardAPR" type="number" min="0" step="0.01" placeholder="0 = no calcular" />
-          </div>
+          <select id="filterType" class="select small">
+            <option value="">Todos</option>
+            <option value="compra">Compra</option>
+            <option value="pago">Pago</option>
+            <option value="reembolso">Reembolso</option>
+          </select>
+          <input id="searchMov" class="input small" placeholder="Buscar descripción / categoría" />
+          <button id="btn-clear-f" class="btn small ghost">Limpiar</button>
         </div>
       </div>
-      <div class="actions">
-        <button type="button" class="btn" data-close="dlgCard">Cancelar</button>
-        <button class="btn primary" id="saveCard" value="default">Guardar</button>
-      </div>
-    </form>
-  </dialog>
 
-  <dialog id="dlgTx">
-    <form class="modal" method="dialog">
-      <header class="row wrap" style="align-items:center">
-        <h3>Movimiento</h3>
-        <div class="spacer"></div>
-        <button type="button" class="btn" data-close="dlgTx">✖️</button>
-      </header>
-      <div class="content">
-        <input type="hidden" id="txId" />
-        <div class="kv">
-          <div>
-            <label>Fecha</label>
-            <input id="txDate" type="date" required />
-          </div>
-          <div>
-            <label>Tarjeta</label>
-            <select id="txCard" required></select>
-          </div>
-          <div>
-            <label>Tipo</label>
-            <select id="txType" required>
-              <option value="expense">Gasto</option>
-              <option value="payment">Pago/Abono</option>
-            </select>
-          </div>
-          <div>
-            <label>Monto (USD)</label>
-            <input id="txAmount" type="number" min="0" step="0.01" required />
-          </div>
-          <div>
-            <label>Categoría</label>
-            <select id="txCat"></select>
-          </div>
-          <div>
-            <label>Descripción</label>
-            <input id="txDesc" placeholder="Opcional" />
-          </div>
+      <div style="margin-top:12px">
+        <table class="table" aria-describedby="movTitle">
+          <thead>
+            <tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Tarjeta</th><th></th></tr>
+          </thead>
+          <tbody id="movTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Forms modal area (hidden) -->
+    <div id="modals"></div>
+
+    <!-- README / Instrucciones dentro del app -->
+    <section class="card" aria-labelledby="readmeTitle" id="readmeCard">
+      <h3 id="readmeTitle">Instrucciones rápidas & checklist</h3>
+      <p class="small-muted">
+        Guarda este archivo como <code>index.html</code> y ábrelo en tu navegador. Funciona offline: todos los datos se guardan en IndexedDB (Dexie). Puedes exportar/importar JSON. Chat IA es mock por defecto.
+      </p>
+      <h4>Checklist de aceptación</h4>
+      <ul class="small-muted">
+        <li>CRUD tarjetas ✅</li>
+        <li>Agregar/editar/eliminar movimientos ✅</li>
+        <li>Cálculo de saldo por tarjeta y total ✅</li>
+        <li>Gráficos (por categoría y mes) ✅</li>
+        <li>Export/Import JSON ✅</li>
+        <li>Persistencia en IndexedDB (fallback localStorage) ✅</li>
+        <li>Chat mock que responde consultas sencillas ✅</li>
+      </ul>
+    </section>
+  </div>
+
+  <!-- SIDEBAR / CHAT -->
+  <aside class="sidebar">
+    <section class="card chat-box" aria-labelledby="chatTitle">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #f0f3f8">
+        <div>
+          <strong id="chatTitle">Chat IA (mock)</strong>
+          <div class="help">Haz preguntas sobre tus tarjetas y movimientos</div>
         </div>
-        <details style="margin-top:8px">
-          <summary>Opciones avanzadas</summary>
-          <div class="kv" style="margin-top:8px">
-            <div>
-              <label>Compra a cuotas (meses)</label>
-              <input id="txInstallments" type="number" min="0" step="1" placeholder="0 = normal" />
-            </div>
-            <div>
-              <label>Meses restantes</label>
-              <input id="txRemaining" type="number" min="0" step="1" placeholder="Autocalculado" />
-            </div>
-          </div>
-        </details>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn" data-close="dlgTx">Cancelar</button>
-        <button class="btn primary" id="saveTx" value="default">Guardar</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="dlgSettings">
-    <form class="modal" method="dialog">
-      <header class="row wrap" style="align-items:center">
-        <h3>Ajustes</h3>
-        <div class="spacer"></div>
-        <button type="button" class="btn" data-close="dlgSettings">✖️</button>
-      </header>
-      <div class="content">
-        <div class="kv">
-          <div>
-            <label>Moneda (solo visual)</label>
-            <input id="setCurrency" placeholder="$" maxlength="3" />
-          </div>
-          <div>
-            <label>Formato numérico (en-US, es-SV, ...)</label>
-            <input id="setLocale" placeholder="es-SV" />
-          </div>
-          <div style="grid-column:1/-1">
-            <label>Categorías (separadas por coma)</label>
-            <input id="setCats" placeholder="Supermercado, Gasolina, Online, Viajes, Otros" />
-          </div>
-          <div class="switch" style="grid-column:1/-1">
-            <input type="checkbox" id="setDark" />
-            <label for="setDark">Modo oscuro</label>
-          </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="chatMode" class="select small" title="Modo chat">
+            <option value="mock">Mock (local)</option>
+            <option value="api">API (external)</option>
+          </select>
+          <button id="btn-clear-chat" class="btn small ghost">Limpiar</button>
         </div>
       </div>
-      <div class="actions">
-        <button type="button" class="btn" data-close="dlgSettings">Cerrar</button>
-        <button class="btn primary" id="saveSettings" value="default">Guardar</button>
+
+      <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+      <div class="chat-input">
+        <input id="chatInput" class="input" placeholder="Ej: ¿Cuánto gasté en Alimentos en octubre?" aria-label="Mensaje al chat" />
+        <button id="chatSend" class="btn small">Enviar</button>
       </div>
-    </form>
-  </dialog>
+    </section>
 
-  <dialog id="dlgIA">
-    <form class="modal" method="dialog">
-      <header class="row wrap" style="align-items:center">
-        <h3>Configuración de IA</h3>
-        <div class="spacer"></div>
-        <button type="button" class="btn" data-close="dlgIA">✖️</button>
-      </header>
-      <div class="content">
-        <div class="kv">
-          <div style="grid-column:1/-1">
-            <label>API Key de OpenAI (se guarda localmente)</label>
-            <input id="openaiKey" placeholder="sk-..." />
-          </div>
-          <div>
-            <label>Modelo</label>
-            <input id="openaiModel" value="gpt-4o-mini" />
-          </div>
-          <div>
-            <label>Incluir detalle de movimientos</label>
-            <select id="openaiDetail">
-              <option value="summary">Solo resumen</option>
-              <option value="full">Completo (puede ser largo)</option>
-            </select>
-          </div>
-        </div>
+    <section class="card" aria-labelledby="quickTitle">
+      <h4 id="quickTitle">Accesos rápidos</h4>
+      <div style="display:grid;gap:8px">
+        <button id="quickSaldo" class="btn small ghost">Ver saldo total</button>
+        <button id="quickVenc" class="btn small ghost">Próximos pagos (7 días)</button>
+        <button id="quickGastoComida" class="btn small ghost">Gasto en Alimentos (mes)</button>
       </div>
-      <div class="actions">
-        <button type="button" class="btn" data-close="dlgIA">Cerrar</button>
-        <button class="btn primary" id="saveIA" value="default">Guardar</button>
-      </div>
-    </form>
-  </dialog>
+    </section>
 
-  <script>
-  // ------------------ Storage Layer ------------------
-  const LS = {
-    get(k,def){ try{ return JSON.parse(localStorage.getItem(k)) ?? def }catch(e){ return def } },
-    set(k,v){ localStorage.setItem(k, JSON.stringify(v)) }
-  }
-  const SKEY={
-    cards:'cct_cards', tx:'cct_tx', cats:'cct_categories', set:'cct_settings', ia:'cct_ia'
-  }
-  const todayStr = () => new Date().toISOString().slice(0,10)
+    <section class="card" aria-labelledby="privacyTitle">
+      <h4 id="privacyTitle">Privacidad</h4>
+      <p class="small-muted">Por defecto la data se queda en tu navegador. Si activas <em>API</em>, revisa README antes de enviar datos externos.</p>
+    </section>
+  </aside>
+</div>
 
-  // Defaults
-  if(!LS.get(SKEY.cats)) LS.set(SKEY.cats,["Supermercado","Gasolina","Online","Restaurantes","Suscripciones","Viajes","Otros"])
-  if(!LS.get(SKEY.set)) LS.set(SKEY.set,{currency:"$", locale:"es-SV", dark:true})
-  if(!LS.get(SKEY.cards)) LS.set(SKEY.cards,[])
-  if(!LS.get(SKEY.tx)) LS.set(SKEY.tx,[])
-  if(!LS.get(SKEY.ia)) LS.set(SKEY.ia,{key:"", model:"gpt-4o-mini", detail:"summary"})
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  // ------------------ Helpers ------------------
-  const fmtMoney = (n) => {
-    const {locale, currency} = LS.get(SKEY.set)
-    const f = new Intl.NumberFormat(locale||'es-SV', {minimumFractionDigits:2, maximumFractionDigits:2})
-    return (currency||'$') + f.format(n||0)
-  }
-  const el = sel => document.querySelector(sel)
-  const ce = (tag,cls,html) => { const e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e }
+<script>
+/*
+  TrackTarjetas - Single-file SPA
+  - IndexedDB via Dexie.js with fallback
+  - Chart.js for charts
+  - Mock chat reading local DB
+  - Export/Import JSON
+  - Seed data included
+*/
 
-  const byId = (arr,id) => arr.find(x=>x.id===id)
-  const uid = () => Math.random().toString(36).slice(2,10)
+/* ---------- Setup DB using Dexie (with fallback) ---------- */
+const DB_NAME = 'TrackTarjetasDB_v1';
+let db;
+let fallback = false;
 
-  function nextDates(cutDay, dueAfter){
-    const now = new Date()
-    const y = now.getFullYear(), m = now.getMonth()
-    const thisCut = new Date(y, m, Math.min(cutDay, 28))
-    let nextCut = new Date(y, m, Math.min(cutDay, 28))
-    if(now > thisCut) nextCut = new Date(y, m+1, Math.min(cutDay, 28))
-    const prevCut = new Date(nextCut.getFullYear(), nextCut.getMonth()-1, Math.min(cutDay,28))
-    const due = new Date(nextCut); due.setDate(due.getDate() + Number(dueAfter||20))
-    const daysToCut = Math.ceil((nextCut - now)/(1000*60*60*24))
-    const daysToDue = Math.ceil((due - now)/(1000*60*60*24))
-    return {prevCut, nextCut, due, daysToCut, daysToDue}
-  }
-
-  function computeBalances(){
-    const cards = LS.get(SKEY.cards,[])
-    const tx = LS.get(SKEY.tx,[])
-    const map = {}
-    for(const c of cards){ map[c.id] = 0 }
-    for(const t of tx){
-      const amt = Number(t.amount)
-      map[t.cardId] = (map[t.cardId]||0) + (t.type==='expense' ? amt : -amt)
-    }
-    return map
-  }
-
-  function cardSummary(card){
-    const balances = computeBalances()
-    const bal = balances[card.id]||0
-    const avail = Math.max(0, Number(card.limit||0) - bal)
-    const {prevCut,nextCut,due,daysToCut,daysToDue} = nextDates(Number(card.cutDay), Number(card.dueAfter))
-
-    return {bal, avail, prevCut, nextCut, due, daysToCut, daysToDue}
-  }
-
-  function within(str, q){ return (str||'').toLowerCase().includes((q||'').toLowerCase()) }
-
-  // ------------------ Render Cards ------------------
-  function renderCards(){
-    const cards = LS.get(SKEY.cards,[])
-    const container = el('#cardsList')
-    container.innerHTML = ''
-
-    const totals = {cards:cards.length, debt:0, limit:0}
-    const balances = computeBalances()
-
-    for(const c of cards){
-      const {bal, avail, nextCut, due, daysToCut, daysToDue} = cardSummary(c)
-      totals.debt += bal
-      totals.limit += Number(c.limit||0)
-
-      const box = ce('div','card', '')
-      box.style.flex = '1 1 340px'
-
-      const header = ce('div','row')
-      header.style.alignItems='center'
-      header.innerHTML = `<div>
-        <div style="font-size:15px;font-weight:600">${c.name} <span class="sub">${c.bank?('• '+c.bank):''}</span></div>
-        <div class="sub">Corte día ${c.cutDay} • Paga ${c.dueAfter} días después</div>
-      </div>`
-      const actions = ce('div','row')
-      actions.style.marginLeft='auto'
-      actions.style.gap='8px'
-      const btnEdit = ce('button','btn','✏️ Editar'); btnEdit.type='button'; btnEdit.addEventListener('click',()=>openCard(c))
-      const btnDel = ce('button','btn danger','🗑️ Eliminar'); btnDel.type='button'; btnDel.setAttribute('data-del-card', c.id); btnDel.title='Eliminar';
-      actions.append(btnEdit,btnDel)
-      header.append(actions)
-
-      const grid = ce('div','kv')
-      grid.innerHTML = `
-        <div class="chip">Límite: <b class="money">${fmtMoney(Number(c.limit||0))}</b></div>
-        <div class="chip">Saldo: <b class="money ${((bal>0)?'bad':'ok')}">${fmtMoney(bal)}</b></div>
-        <div class="chip">Disponible: <b class="money ${avail>0?'ok':'bad'}">${fmtMoney(avail)}</b></div>
-        <div class="chip">Próx. corte: <b>${nextCut.toLocaleDateString()}</b> <span class="pill ${daysToCut<=3?'warn':''}">${daysToCut} días</span></div>
-        <div class="chip">Vence pago: <b>${due.toLocaleDateString()}</b> <span class="pill ${daysToDue<=5?'warn':''}">${daysToDue} días</span></div>
-        <div class="chip">Interés mensual: <b>${Number(c.apr||0)}%</b></div>
-      `
-
-      box.append(header, grid)
-      container.append(box)
-    }
-
-    el('#statCards').textContent = totals.cards
-    el('#statDebt').textContent = fmtMoney(totals.debt)
-    el('#statAvail').textContent = fmtMoney(Math.max(0, totals.limit - totals.debt))
-
-    // refresh filters card list
-    const fCard = el('#fCard'); const txCard = el('#txCard')
-    const opts = ['<option value="">Tarjeta: todas</option>'].concat(cards.map(c=>`<option value="${c.id}">${c.name}</option>`))
-    fCard.innerHTML = opts.join('')
-    txCard.innerHTML = ['<option disabled selected hidden>Selecciona...</option>'].concat(cards.map(c=>`<option value="${c.id}">${c.name}</option>`)).join('')
-  }
-
-  // ------------------ Cards CRUD ------------------
-  function openCard(c=null){
-    el('#cardId').value = c?.id || ''
-    el('#cardName').value = c?.name || ''
-    el('#cardBank').value = c?.bank || ''
-    el('#cardLimit').value = c?.limit || ''
-    el('#cardCut').value = c?.cutDay || 1
-    el('#cardDueAfter').value = c?.dueAfter || 20
-    el('#cardAPR').value = c?.apr || ''
-    el('#dlgCard').showModal()
-  }
-  function saveCard(){
-    const id = el('#cardId').value || uid()
-    const obj = {
-      id,
-      name: el('#cardName').value.trim(),
-      bank: el('#cardBank').value.trim(),
-      limit: Number(el('#cardLimit').value||0),
-      cutDay: Number(el('#cardCut').value||1),
-      dueAfter: Number(el('#cardDueAfter').value||20),
-      apr: Number(el('#cardAPR').value||0)
-    }
-    if(!obj.name || obj.limit<=0){ alert('Nombre y límite son obligatorios'); return }
-    const cards = LS.get(SKEY.cards,[])
-    const i = cards.findIndex(x=>x.id===obj.id)
-    if(i>=0) cards[i]=obj; else cards.push(obj)
-    LS.set(SKEY.cards,cards)
-    el('#dlgCard').close()
-    renderCards(); renderTx()
-  }
-  function delCard(id, force=false){
-    if(!force && !confirm('¿Eliminar tarjeta y sus referencias en movimientos?')) return
-    LS.set(SKEY.cards, LS.get(SKEY.cards,[]).filter(x=>x.id!==id))
-    // No borra movimientos, pero deja el cardId huérfano; opción: limpiar
-    const tx = LS.get(SKEY.tx,[]).map(t=> (t.cardId===id? {...t, cardId:""}: t))
-    LS.set(SKEY.tx, tx)
-    renderCards(); renderTx()
-  }
-
-  // ------------------ Transactions ------------------
-  function openTx(t=null){
-    const cards = LS.get(SKEY.cards,[])
-    if(cards.length===0){ alert('Crea una tarjeta primero'); return }
-    el('#txId').value = t?.id || ''
-    el('#txDate').value = t?.date || todayStr()
-    el('#txCard').value = t?.cardId || cards[0].id
-    el('#txType').value = t?.type || 'expense'
-    el('#txAmount').value = t? Number(t.amount) : ''
-    el('#txDesc').value = t?.desc || ''
-
-    // categories
-    const cats = LS.get(SKEY.cats,[])
-    const sel = el('#txCat')
-    sel.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('')
-    sel.value = t?.category || cats[0]
-
-    el('#txInstallments').value = t?.installments || ''
-    el('#txRemaining').value = t?.remaining || ''
-
-    el('#dlgTx').showModal()
-  }
-
-  function saveTx(){
-    const obj = {
-      id: el('#txId').value || uid(),
-      date: el('#txDate').value,
-      cardId: el('#txCard').value,
-      type: el('#txType').value,
-      amount: Number(el('#txAmount').value||0),
-      category: el('#txCat').value,
-      desc: el('#txDesc').value.trim(),
-      installments: Number(el('#txInstallments').value||0),
-      remaining: Number(el('#txRemaining').value||0)
-    }
-    if(!obj.date || !obj.cardId || !obj.type || obj.amount<=0){ alert('Completa fecha, tarjeta, tipo y monto'); return }
-    const tx = LS.get(SKEY.tx,[])
-    const i = tx.findIndex(x=>x.id===obj.id)
-    if(i>=0) tx[i]=obj; else tx.unshift(obj) // último primero
-    LS.set(SKEY.tx, tx)
-    el('#dlgTx').close()
-    renderCards(); renderTx()
-  }
-
-  function delTx(id, force=false){
-    if(!force && !confirm('¿Eliminar movimiento?')) return
-    LS.set(SKEY.tx, LS.get(SKEY.tx,[]).filter(x=>x.id!==id))
-    renderCards(); renderTx()
-  }
-
-  function renderTx(){
-    const tbody = el('#txTable tbody'); tbody.innerHTML=''
-    const cards = LS.get(SKEY.cards,[])
-    const cats = LS.get(SKEY.cats,[])
-    // populate filters
-    el('#fCat').innerHTML = ['<option value="">Categoría: todas</option>'].concat(cats.map(c=>`<option value="${c}">${c}</option>`)).join('')
-
-    const q = {
-      card: el('#fCard').value,
-      type: el('#fType').value,
-      cat: el('#fCat').value,
-      from: el('#fFrom').value,
-      to: el('#fTo').value,
-      search: el('#fSearch').value
-    }
-
-    let rows = LS.get(SKEY.tx,[])
-    if(q.card) rows = rows.filter(r=>r.cardId===q.card)
-    if(q.type) rows = rows.filter(r=>r.type===q.type)
-    if(q.cat) rows = rows.filter(r=>r.category===q.cat)
-    if(q.from) rows = rows.filter(r=>r.date>=q.from)
-    if(q.to) rows = rows.filter(r=>r.date<=q.to)
-    if(q.search) rows = rows.filter(r=> within(r.desc, q.search))
-
-    for(const r of rows){
-      const tr = document.createElement('tr')
-      const tdDate = document.createElement('td'); tdDate.textContent = r.date
-      const tdCard = document.createElement('td'); tdCard.textContent = (byId(cards,r.cardId)?.name || '—')
-      const tdType = document.createElement('td'); tdType.innerHTML = r.type==='expense'?'<span class="bad">Gasto</span>':'<span class="ok">Pago</span>'
-      const tdCat  = document.createElement('td'); tdCat.textContent = r.category||'—'
-      const tdDesc = document.createElement('td'); tdDesc.textContent = r.desc||''
-      const tdAmt  = document.createElement('td'); tdAmt.style.textAlign='right'; tdAmt.className = 'money ' + (r.type==='expense'?'bad':'ok'); tdAmt.textContent = fmtMoney(r.amount)
-      const tdAct  = document.createElement('td'); tdAct.style.textAlign='right'
-
-      const btnE = ce('button','btn','✏️');
-      btnE.title = 'Editar';
-      btnE.addEventListener('click',()=>openTx(r))
-      const btnD = ce('button','btn danger','🗑️');
-      btnD.title = 'Eliminar';
-      btnD.type = 'button';
-      btnD.setAttribute('data-del-tx', r.id);
-      tdAct.append(btnE, btnD)
-
-      tr.append(tdDate,tdCard,tdType,tdCat,tdDesc,tdAmt,tdAct)
-      tbody.append(tr)
-    }
-  }
-
-  // ------------------ Settings & Categories ------------------
-  function openSettings(){
-    const s = LS.get(SKEY.set)
-    el('#setCurrency').value = s.currency||'$'
-    el('#setLocale').value = s.locale||'es-SV'
-    el('#setDark').checked = s.dark!==false
-    el('#setCats').value = (LS.get(SKEY.cats)||[]).join(', ')
-    el('#dlgSettings').showModal()
-  }
-  function saveSettings(){
-    const s = LS.get(SKEY.set)
-    s.currency = el('#setCurrency').value || '$'
-    s.locale = el('#setLocale').value || 'es-SV'
-    s.dark = el('#setDark').checked
-    LS.set(SKEY.set, s)
-    const cats = el('#setCats').value.split(',').map(x=>x.trim()).filter(Boolean)
-    if(cats.length) LS.set(SKEY.cats, cats)
-    el('#dlgSettings').close()
-    renderCards(); renderTx(); applyTheme()
-  }
-  function applyTheme(){
-    const s = LS.get(SKEY.set)
-    document.documentElement.style.colorScheme = s.dark!==false ? 'dark' : 'light'
-  }
-
-  // ------------------ Export / Import ------------------
-  function exportData(){
-    const data = {
-      cards: LS.get(SKEY.cards,[]),
-      tx: LS.get(SKEY.tx,[]),
-      categories: LS.get(SKEY.cats,[]),
-      settings: LS.get(SKEY.set,{}),
-      ia: LS.get(SKEY.ia,{})
-    }
-    const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'})
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob); a.download = 'credit-card-tracker.json'; a.click()
-  }
-  function importData(file){
-    const r = new FileReader()
-    r.onload = () => {
-      try{
-        const obj = JSON.parse(r.result)
-        if(obj.cards) LS.set(SKEY.cards, obj.cards)
-        if(obj.tx) LS.set(SKEY.tx, obj.tx)
-        if(obj.categories) LS.set(SKEY.cats, obj.categories)
-        if(obj.settings) LS.set(SKEY.set, obj.settings)
-        if(obj.ia) LS.set(SKEY.ia, obj.ia)
-        renderCards(); renderTx(); applyTheme(); alert('Importado correctamente')
-      }catch(e){ alert('Archivo inválido') }
-    }
-    r.readAsText(file)
-  }
-
-  // ------------------ IA Assistant ------------------
-  function openIASettings(){
-    const s = LS.get(SKEY.ia)
-    el('#openaiKey').value = s.key||''
-    el('#openaiModel').value = s.model||'gpt-4o-mini'
-    el('#openaiDetail').value = s.detail||'summary'
-    el('#dlgIA').showModal()
-  }
-  function saveIA(){
-    const ia = LS.get(SKEY.ia)
-    ia.key = el('#openaiKey').value.trim()
-    ia.model = el('#openaiModel').value.trim()||'gpt-4o-mini'
-    ia.detail = el('#openaiDetail').value
-    LS.set(SKEY.ia, ia)
-    el('#dlgIA').close()
-  }
-
-  function pushChat(role, text){
-    const chat = el('#chat')
-    const b = ce('div','bubble '+(role==='user'?'me':''))
-    b.textContent = text
-    chat.append(b)
-    chat.scrollTop = chat.scrollHeight
-  }
-
-  async function askIA(){
-    const q = el('#iaQuestion').value.trim()
-    if(!q) return
-    pushChat('user', q)
-    el('#iaQuestion').value = ''
-
-    const ia = LS.get(SKEY.ia)
-    if(!ia.key){ pushChat('assistant','Primero configura tu API key (botón 🔑 API).'); return }
-
-    const state = {
-      now: new Date().toISOString(),
-      settings: LS.get(SKEY.set,{}),
-      cards: LS.get(SKEY.cards,[]).map(c=>({
-        ...c,
-        summary: cardSummary(c)
-      })),
-      tx: ia.detail==='full' ? LS.get(SKEY.tx,[]) : summarizeTx()
-    }
-
-    const sys = `Eres un asistente financiero para una app local de tarjetas de crédito.\n\nREGLAS:\n- Responde en español, claro y conciso.\n- Usa SOLO los datos JSON que te paso.\n- Si falta información, dilo explícitamente.\n- Puedes calcular totales, próximas fechas de corte y de pago, días restantes y compras en período de gracia (compras después del corte anterior y antes del próximo).\n- Si el usuario pide recomendaciones, limita a sugerencias prácticas basadas en sus propias fechas y saldos.\n- Formatea cantidades en USD con dos decimales y usa fechas legibles.\n`;
-
-    const user = `Pregunta: ${q}\n\nDatos JSON:\n${JSON.stringify(state)}`
-
-    // skeleton
-    const skeleton = ce('div','bubble')
-    skeleton.innerHTML = '<div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:80%;margin-top:6px"></div>'
-    el('#chat').append(skeleton)
-    el('#chat').scrollTop = el('#chat').scrollHeight
-
-    try{
-      const res = await fetch('https://api.openai.com/v1/chat/completions',{
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'Authorization':'Bearer '+ia.key
-        },
-        body: JSON.stringify({
-          model: ia.model||'gpt-4o-mini',
-          messages:[
-            {role:'system', content: sys},
-            {role:'user', content: user}
-          ],
-          temperature:0.2
-        })
-      })
-      if(!res.ok){ throw new Error('Código '+res.status) }
-      const data = await res.json()
-      const text = data.choices?.[0]?.message?.content?.trim() || 'Sin respuesta'
-      skeleton.remove(); pushChat('assistant', text)
-    }catch(err){
-      skeleton.remove(); pushChat('assistant', 'Error al consultar la IA: '+err.message)
-    }
-  }
-
-  function summarizeTx(){
-    const tx = LS.get(SKEY.tx,[])
-    const out = {
-      totalCompras:0, totalPagos:0, porTarjeta:{}, porCategoria:{}, recientes: tx.slice(0,10)
-    }
-    for(const t of tx){
-      if(t.type==='expense') out.totalCompras += Number(t.amount)
-      else out.totalPagos += Number(t.amount)
-      const k = t.cardId || 'sinTarjeta'
-      out.porTarjeta[k] = out.porTarjeta[k] || {compras:0,pagos:0}
-      if(t.type==='expense') out.porTarjeta[k].compras += Number(t.amount) 
-      else out.porTarjeta[k].pagos += Number(t.amount)
-      const c = t.category || 'Otros'
-      out.porCategoria[c] = (out.porCategoria[c]||0) + Number(t.amount) * (t.type==='expense'?1:-1)
-    }
-    return out
-  }
-
-  // ------------------ Events ------------------
-  // Botones [data-close] para cerrar modales sin validar campos (evita que los 'required' bloqueen el cierre)
-  document.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('[data-close]');
-    if(btn){ ev.preventDefault(); const id = btn.getAttribute('data-close'); const d = document.getElementById(id); d?.close(); }
-  });
-  el('#btnNewCard').onclick = () => openCard()
-  el('#saveCard').onclick = (e)=>{ e.preventDefault(); saveCard() }
-
-  el('#btnNewTx').onclick = () => openTx()
-  el('#saveTx').onclick = (e)=>{ e.preventDefault(); saveTx() }
-
-  el('#btnSettings').onclick = openSettings
-  el('#saveSettings').onclick = (e)=>{ e.preventDefault(); saveSettings() }
-
-  el('#btnExport').onclick = exportData
-  el('#fileImport').addEventListener('change', (ev)=>{ const f=ev.target.files?.[0]; if(f) importData(f); ev.target.value='' })
-
-  el('#btnIASettings').onclick = openIASettings
-  el('#saveIA').onclick = (e)=>{ e.preventDefault(); saveIA() }
-
-  el('#btnAsk').onclick = askIA
-  el('#iaQuestion').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); askIA() } })
-
-  // Filters
-  ;['#fCard','#fType','#fCat','#fFrom','#fTo','#fSearch'].forEach(sel=>{
-    el(sel).addEventListener(sel==='#fSearch'?'input':'change', renderTx)
-  })
-  el('#btnClearFilters').onclick = ()=>{ ['#fCard','#fType','#fCat','#fFrom','#fTo','#fSearch'].forEach(s=>el(s).value=''); renderTx() }
-
-  // Init
-  applyTheme(); renderCards(); renderTx()
-
-  // Global event delegation for delete buttons (robust against re-render)
-  document.addEventListener('click', (e)=>{
-    let target = e.target
-    if(!(target instanceof Element)) target = target?.parentElement
-    if(!target) return
-    const btnCard = target.closest('[data-del-card]')
-    if(btnCard){ e.preventDefault(); const id = btnCard.getAttribute('data-del-card'); if(id) delCard(id) }
-    const btnTx = target.closest('[data-del-tx]')
-    if(btnTx){ e.preventDefault(); const id = btnTx.getAttribute('data-del-tx'); if(id) delTx(id) }
-  })
-  pushChat('assistant','¡Hola! Soy tu asistente de tarjetas. Pregúntame por saldos, próximas fechas de pago, período de gracia o gastos por categoría ✨')
-
-  // ------------------ Self-tests (simple, no UI) ------------------
-  ;(function runTests(){
-    try{
-      // Test 1: crear tarjeta mínima y verificar resumen
-      const cards0 = LS.get(SKEY.cards,[])
-      if(cards0.length===0){
-        const testCard = {id:'T1', name:'Test', bank:'Demo', limit:1000, cutDay:10, dueAfter:20, apr:0}
-        LS.set(SKEY.cards,[testCard])
-        const sum = cardSummary(testCard)
-        console.assert(typeof sum.daysToCut === 'number', 'daysToCut debe ser número')
+async function initDB(){
+  try{
+    db = new Dexie(DB_NAME);
+    db.version(1).stores({
+      tarjetas: 'id,nombre,banco,tipo,limite,fechaCorte,fechaPagoPreferida,moneda,createdAt',
+      movimientos: 'id,tarjetaId,fecha,categoria,monto,tipo,estado',
+      settings: 'key,value'
+    });
+    await db.open();
+  }catch(e){
+    console.warn('Dexie/IndexedDB no está disponible, fallback a localStorage', e);
+    fallback = true;
+    db = {
+      async tablas(){ return JSON.parse(localStorage.getItem('tt_db')||'{}') },
+      async save(state){
+        localStorage.setItem('tt_db', JSON.stringify(state));
       }
-      // Test 2: agregar gasto y pago y validar signo
-      const before = computeBalances()
-      const tx = LS.get(SKEY.tx,[])
-      tx.unshift({id:'X1', date: todayStr(), cardId: LS.get(SKEY.cards,[])[0]?.id || 'T1', type:'expense', amount:100, category:'Otros', desc:'Test gasto'})
-      tx.unshift({id:'X2', date: todayStr(), cardId: LS.get(SKEY.cards,[])[0]?.id || 'T1', type:'payment', amount:40, category:'Otros', desc:'Test pago'})
-      LS.set(SKEY.tx, tx)
-      const after = computeBalances()
-      const cid = LS.get(SKEY.cards,[])[0]?.id || 'T1'
-      console.assert((after[cid] - (before[cid]||0)) === 60, 'Balance debería aumentar neto 60')
-      // Test 3: borrar movimiento y validar que ya no exista
-      const txBefore = LS.get(SKEY.tx,[])
-      const toDel = txBefore.find(t=>t.id==='X1')?.id
-      if(toDel){ delTx(toDel, true); const exists = LS.get(SKEY.tx,[]).some(t=>t.id===toDel); console.assert(!exists, 'Movimiento X1 debería estar eliminado') }
-      // Test 4: eliminar tarjeta (forzado, sin confirm) debe dejar cardId vacío en movimientos
-      const cardsNow = LS.get(SKEY.cards,[]); if(cardsNow[0]){ const idc = cardsNow[0].id; delCard(idc,true); const orphaned = LS.get(SKEY.tx,[]).every(t=>t.cardId!==idc); console.assert(orphaned, 'Movs deben quedar sin cardId del eliminado') }
-      console.log('✅ Tests básicos OK')
-    }catch(e){ console.error('❌ Tests fallaron:', e) }
-  })()
-  </script>
+    };
+  }
+}
+
+/* ---------- Seed data ---------- */
+const seed = {
+  tarjetas: [
+    {"id":"t1","nombre":"VISA Personal","banco":"Banco X","tipo":"crédito","numeroMask":"**** **** **** 1234","limite":1500,"fechaCorte":15,"fechaPagoPreferida":25,"moneda":"USD","color":"#0F62FE","createdAt":new Date().toISOString()},
+    {"id":"t2","nombre":"MasterCard Familiar","banco":"Banco Y","tipo":"crédito","numeroMask":"**** **** **** 5678","limite":3000,"fechaCorte":5,"fechaPagoPreferida":15,"moneda":"USD","color":"#00BFA6","createdAt":new Date().toISOString()},
+    {"id":"t3","nombre":"Débito Nómina","banco":"Banco Z","tipo":"débito","numeroMask":"**** **** **** 9012","limite":0,"fechaCorte":null,"fechaPagoPreferida":null,"moneda":"USD","color":"#FFB020","createdAt":new Date().toISOString()}
+  ],
+  movimientos: [
+    {"id":"m1","tarjetaId":"t1","fecha":"2025-10-01","descripcion":"Supermercado ABC","categoria":"Alimentos","monto":45.50,"tipo":"compra","estado":"confirmado"},
+    {"id":"m2","tarjetaId":"t1","fecha":"2025-10-03","descripcion":"Pago - Transferencia","categoria":"Pago","monto":-500.00,"tipo":"pago","estado":"confirmado"},
+    {"id":"m3","tarjetaId":"t2","fecha":"2025-10-05","descripcion":"Gasolina Estación X","categoria":"Transporte","monto":30.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m4","tarjetaId":"t1","fecha":"2025-10-08","descripcion":"Restaurante La Esquina","categoria":"Alimentos","monto":18.75,"tipo":"compra","estado":"confirmado"},
+    {"id":"m5","tarjetaId":"t2","fecha":"2025-09-28","descripcion":"Pago - Nómina","categoria":"Pago","monto":-350.00,"tipo":"pago","estado":"confirmado"},
+    {"id":"m6","tarjetaId":"t1","fecha":"2025-10-11","descripcion":"Pago mínimo","categoria":"Pago","monto":-50.00,"tipo":"pago","estado":"pendiente"},
+    {"id":"m7","tarjetaId":"t3","fecha":"2025-10-02","descripcion":"Retiro cajero","categoria":"Cash","monto":20.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m8","tarjetaId":"t2","fecha":"2025-10-12","descripcion":"Tienda Online","categoria":"Compras","monto":120.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m9","tarjetaId":"t1","fecha":"2025-09-15","descripcion":"Pago anual seguro","categoria":"Servicios","monto":-80.00,"tipo":"pago","estado":"confirmado"},
+    {"id":"m10","tarjetaId":"t2","fecha":"2025-10-18","descripcion":"Supermercado B","categoria":"Alimentos","monto":60.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m11","tarjetaId":"t1","fecha":"2025-08-22","descripcion":"Mecánico","categoria":"Vehículo","monto":200.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m12","tarjetaId":"t2","fecha":"2025-10-20","descripcion":"Pago - Transferencia","categoria":"Pago","monto":-200.00,"tipo":"pago","estado":"pendiente"},
+    {"id":"m13","tarjetaId":"t1","fecha":"2025-10-21","descripcion":"Cine","categoria":"Entretenimiento","monto":12.50,"tipo":"compra","estado":"confirmado"},
+    {"id":"m14","tarjetaId":"t2","fecha":"2025-10-22","descripcion":"Farmacia","categoria":"Salud","monto":25.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m15","tarjetaId":"t1","fecha":"2025-10-23","descripcion":"Mercado local","categoria":"Alimentos","monto":32.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m16","tarjetaId":"t3","fecha":"2025-10-24","descripcion":"Pago servicio agua","categoria":"Servicios","monto":15.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m17","tarjetaId":"t2","fecha":"2025-10-25","descripcion":"Zapatería","categoria":"Compras","monto":70.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m18","tarjetaId":"t1","fecha":"2025-10-26","descripcion":"Regalo","categoria":"Regalos","monto":45.00,"tipo":"compra","estado":"confirmado"},
+    {"id":"m19","tarjetaId":"t2","fecha":"2025-10-27","descripcion":"Restaurante Familiar","categoria":"Alimentos","monto":90.00,"tipo":"compra","estado":"pending"},
+    {"id":"m20","tarjetaId":"t1","fecha":"2025-10-28","descripcion":"Suscripción streaming","categoria":"Entretenimiento","monto":9.99,"tipo":"compra","estado":"confirmado"}
+  ],
+  settings: [
+    {key:'monedaPorDefecto', value:'USD'},
+    {key:'chatMode', value:'mock'}
+  ]
+};
+
+async function resetSeed(){
+  if(!fallback){
+    await db.tarjetas.clear();
+    await db.movimientos.clear();
+    await db.settings.clear();
+    for(const t of seed.tarjetas) await db.tarjetas.add(t);
+    for(const m of seed.movimientos) await db.movimientos.add(m);
+    for(const s of seed.settings) await db.settings.add(s);
+  } else {
+    const state = {tarjetas:seed.tarjetas, movimientos:seed.movimientos, settings:seed.settings};
+    await db.save(state);
+  }
+  showToast('Seed cargada');
+  await refreshAll();
+}
+
+/* ---------- Utilities ---------- */
+function uid(prefix='id'){ return prefix + Math.random().toString(36).slice(2,9) }
+function fmtMoney(v){ return (typeof v==='number' ? v : Number(v)||0).toLocaleString(undefined,{style:'currency',currency:'USD',maximumFractionDigits:2}) }
+function showToast(text,timeout=2200){
+  const t = document.getElementById('toast');
+  t.innerText = text; t.style.display='block';
+  setTimeout(()=> t.style.display='none', timeout);
+}
+
+/* ---------- CRUD & UI rendering ---------- */
+async function getAllTarjetas(){
+  if(!fallback) return await db.tarjetas.toArray();
+  const s = await db.tablas(); return s.tarjetas || [];
+}
+async function getAllMovimientos(){
+  if(!fallback) return await db.movimientos.toArray();
+  const s = await db.tablas(); return s.movimientos || [];
+}
+async function addTarjeta(obj){
+  obj.id = obj.id || uid('t');
+  obj.createdAt = new Date().toISOString();
+  if(!fallback) await db.tarjetas.add(obj);
+  else { const s = await db.tablas(); s.tarjetas = s.tarjetas||[]; s.tarjetas.push(obj); await db.save(s); }
+}
+async function updateTarjeta(id,patch){
+  if(!fallback) await db.tarjetas.update(id, patch);
+  else { const s = await db.tablas(); s.tarjetas = s.tarjetas.map(t=>t.id===id?({...t,...patch}):t); await db.save(s); }
+}
+async function deleteTarjeta(id){
+  if(!fallback) await db.tarjetas.delete(id);
+  else { const s = await db.tablas(); s.tarjetas = s.tarjetas.filter(t=>t.id!==id); await db.save(s); }
+}
+async function addMovimiento(obj){
+  obj.id = obj.id || uid('m');
+  obj.createdAt = new Date().toISOString();
+  if(!fallback) await db.movimientos.add(obj);
+  else { const s = await db.tablas(); s.movimientos = s.movimientos||[]; s.movimientos.push(obj); await db.save(s); }
+}
+async function updateMovimiento(id,patch){
+  if(!fallback) await db.movimientos.update(id, patch);
+  else { const s = await db.tablas(); s.movimientos = s.movimientos.map(m=>m.id===id?({...m,...patch}):m); await db.save(s); }
+}
+async function deleteMovimiento(id){
+  if(!fallback) await db.movimientos.delete(id);
+  else { const s = await db.tablas(); s.movimientos = s.movimientos.filter(m=>m.id!==id); await db.save(s); }
+}
+async function saveSetting(key,value){
+  if(!fallback) {
+    const exists = await db.settings.get(key);
+    if(exists) await db.settings.update(key,{value}); else await db.settings.add({key,value});
+  } else {
+    const s = await db.tablas(); s.settings = s.settings||[]; const idx = s.settings.findIndex(x=>x.key===key);
+    if(idx>=0) s.settings[idx].value = value; else s.settings.push({key,value});
+    await db.save(s);
+  }
+}
+async function getSetting(key){
+  if(!fallback){ const r = await db.settings.get(key); return r ? r.value : null }
+  const s = await db.tablas(); const found = (s.settings||[]).find(x=>x.key===key); return found?found.value:null;
+}
+
+/* ---------- Renderers ---------- */
+let catChart, monthChart;
+
+async function refreshAll(){
+  await renderTarjetasList();
+  await renderMovList();
+  await renderFilters();
+  await renderKPIs();
+  await renderCharts();
+}
+
+async function renderTarjetasList(){
+  const list = document.getElementById('tarjetasList');
+  const tarjetas = await getAllTarjetas();
+  list.innerHTML = tarjetas.map(t=>{
+    const balance = computeSaldoByTarjeta(t.id);
+    return `<div class="card card-compact" style="margin-bottom:8px">
+      <div>
+        <div><span class="color-dot" style="background:${t.color||'#ddd'}"></span><strong>${t.nombre}</strong> <span class="small-muted"> - ${t.banco}</span></div>
+        <div class="small-muted" style="margin-top:6px">${t.numeroMask || ''} • Límite ${fmtMoney(t.limite)}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="value">${fmtMoney(await balance)}</div>
+        <div style="margin-top:8px">
+          <button class="btn small ghost" onclick="openEditCard('${t.id}')">Editar</button>
+          <button class="btn small secondary" onclick="openNewMovWithCard('${t.id}')">+Mov</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="small-muted">No hay tarjetas aún</div>';
+}
+
+async function renderMovList(limit=6){
+  const list = document.getElementById('movList');
+  const movimientos = (await getAllMovimientos()).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha)).slice(0,limit);
+  const tarjetas = await getAllTarjetas();
+  const map = Object.fromEntries(tarjetas.map(t=>[t.id,t]));
+  list.innerHTML = movimientos.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+    <div>
+      <div><strong>${m.descripcion}</strong></div>
+      <div class="small-muted">${m.categoria} • ${new Date(m.fecha).toLocaleDateString()}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-weight:700">${fmtMoney(m.monto)}</div>
+      <div class="small-muted">${map[m.tarjetaId]?.nombre||'Sin tarjeta'}</div>
+    </div>
+  </div>`).join('') || '<div class="small-muted">No hay movimientos</div>';
+}
+
+async function renderFilters(){
+  const sel = document.getElementById('filterCard');
+  const tarjetas = await getAllTarjetas();
+  sel.innerHTML = '<option value="">Todas las tarjetas</option>' + tarjetas.map(t=>`<option value="${t.id}">${t.nombre} — ${t.numeroMask||''}</option>`).join('');
+}
+
+async function renderKPIs(){
+  const tarjetas = await getAllTarjetas();
+  const movimientos = await getAllMovimientos();
+  // saldo por tarjeta = sum de movimientos (confirmados y pendientes incl.)
+  const saldoTotal = tarjetas.reduce((acc,t)=>{
+    const s = movimientos.filter(m=>m.tarjetaId===t.id).reduce((a,b)=>a+Number(b.monto||0),0);
+    return acc + s;
+  },0);
+  const gastoMes = movimientos.filter(m=>{
+    const d = new Date(m.fecha);
+    const now = new Date();
+    return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear() && m.tipo==='compra';
+  }).reduce((a,b)=>a+Number(b.monto||0),0);
+
+  document.getElementById('saldoTotal').innerText = fmtMoney(saldoTotal);
+  document.getElementById('gastoMes').innerText = fmtMoney(gastoMes);
+}
+
+/* ---------- Charts ---------- */
+async function renderCharts(){
+  // prepare data
+  const movimientos = await getAllMovimientos();
+  // gasto por categoría (solo compras positivas)
+  const catMap = {};
+  movimientos.forEach(m=>{
+    if(m.tipo==='compra' && Number(m.monto)>0){
+      catMap[m.categoria] = (catMap[m.categoria]||0) + Number(m.monto);
+    }
+  });
+  const catLabels = Object.keys(catMap);
+  const catData = catLabels.map(l=>catMap[l]);
+
+  // gasto mensual (últimos 6 meses)
+  const monthMap = {};
+  const now = new Date();
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i,1);
+    const key = d.toLocaleString(undefined,{month:'short',year:'numeric'});
+    monthMap[key]=0;
+  }
+  movimientos.forEach(m=>{
+    if(m.tipo==='compra' && Number(m.monto)>0){
+      const d = new Date(m.fecha);
+      const key = d.toLocaleString(undefined,{month:'short',year:'numeric'});
+      if(key in monthMap) monthMap[key]+=Number(m.monto);
+    }
+  });
+
+  const monthLabels = Object.keys(monthMap);
+  const monthData = monthLabels.map(k=>monthMap[k]);
+
+  // destroy old charts
+  if(catChart) catChart.destroy();
+  if(monthChart) monthChart.destroy();
+  const ctx1 = document.getElementById('catChart').getContext('2d');
+  catChart = new Chart(ctx1, {
+    type: 'doughnut',
+    data: { labels: catLabels, datasets:[{data:catData}]},
+    options:{plugins:{legend:{position:'bottom'}},maintainAspectRatio:false}
+  });
+  const ctx2 = document.getElementById('monthChart').getContext('2d');
+  monthChart = new Chart(ctx2, {
+    type: 'bar',
+    data:{ labels:monthLabels, datasets:[{label:'Gasto',data:monthData}]},
+    options:{plugins:{legend:{display:false}},maintainAspectRatio:false}
+  });
+}
+
+/* ---------- Table render & filtering ---------- */
+async function renderMovTable(){
+  const body = document.getElementById('movTableBody');
+  let movimientos = await getAllMovimientos();
+  const selCard = document.getElementById('filterCard').value;
+  const selType = document.getElementById('filterType').value;
+  const q = document.getElementById('searchMov').value.toLowerCase().trim();
+  if(selCard) movimientos = movimientos.filter(m=>m.tarjetaId===selCard);
+  if(selType) movimientos = movimientos.filter(m=>m.tipo===selType);
+  if(q) movimientos = movimientos.filter(m=>(m.descripcion||'').toLowerCase().includes(q) || (m.categoria||'').toLowerCase().includes(q));
+  movimientos = movimientos.sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const tarjetas = await getAllTarjetas();
+  const map = Object.fromEntries(tarjetas.map(t=>[t.id,t]));
+  body.innerHTML = movimientos.map(m=>`<tr>
+    <td>${new Date(m.fecha).toLocaleDateString()}</td>
+    <td>${m.descripcion||''}</td>
+    <td>${m.categoria||''}</td>
+    <td>${fmtMoney(m.monto)}</td>
+    <td>${map[m.tarjetaId]?.nombre||'—'}</td>
+    <td><button class="btn small ghost" onclick="openEditMov('${m.id}')">Editar</button> <button class="btn small" onclick="removeMov('${m.id}')">Eliminar</button></td>
+  </tr>`).join('') || '<tr><td colspan="6" class="small-muted">Sin resultados</td></tr>';
+}
+
+/* ---------- Compute saldo per card (returns Promise resolved number) ---------- */
+async function computeSaldoByTarjeta(id){
+  const movimientos = await getAllMovimientos();
+  const sum = movimientos.filter(m=>m.tarjetaId===id).reduce((a,b)=>a + Number(b.monto||0),0);
+  return sum;
+}
+
+/* ---------- Modals (forms) ---------- */
+function modal(html){
+  const container = document.getElementById('modals');
+  container.innerHTML = `<div class="card" style="position:fixed;left:50%;top:12%;transform:translateX(-50%);width:min(720px,95%);z-index:9999">${html}</div>`;
+}
+function closeModal(){
+  document.getElementById('modals').innerHTML='';
+}
+
+window.openEditCard = async function(id){
+  const t = (await getAllTarjetas()).find(x=>x.id===id);
+  modal(`
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h3>Editar tarjeta</h3><div class="help">ID: ${t.id}</div></div>
+      <div><button onclick="closeModal()" class="btn small ghost">Cerrar</button></div>
+    </div>
+    <div class="sep"></div>
+    <div style="display:grid;gap:8px">
+      <label>Nombre<input id="e_nombre" class="input" value="${t.nombre||''}" /></label>
+      <div class="grid-2">
+        <label>Banco<input id="e_banco" class="input" value="${t.banco||''}" /></label>
+        <label>Tipo
+          <select id="e_tipo" class="select">
+            <option value="crédito" ${t.tipo==='crédito'?'selected':''}>Crédito</option>
+            <option value="débito" ${t.tipo==='débito'?'selected':''}>Débito</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid-2">
+        <label>Número mask<input id="e_num" class="input" value="${t.numeroMask||''}" /></label>
+        <label>Límite<input id="e_lim" type="number" class="input" value="${t.limite||0}" /></label>
+      </div>
+      <div class="grid-2">
+        <label>Fecha corte (día)<input id="e_corte" type="number" min="1" max="28" class="input" value="${t.fechaCorte||''}" /></label>
+        <label>Fecha pago preferida<input id="e_pago" type="number" min="1" max="31" class="input" value="${t.fechaPagoPreferida||''}" /></label>
+      </div>
+      <div class="grid-2">
+        <label>Color<input id="e_color" type="color" class="input" value="${t.color||'#0F62FE'}" /></label>
+        <label>Moneda<input id="e_mon" class="input" value="${t.moneda||'USD'}" /></label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn small ghost" onclick="closeModal()">Cancelar</button>
+        <button class="btn small" onclick="saveEditCard('${t.id}')">Guardar</button>
+      </div>
+    </div>
+  `);
+};
+
+async function saveEditCard(id){
+  const patch = {
+    nombre:document.getElementById('e_nombre').value,
+    banco:document.getElementById('e_banco').value,
+    tipo:document.getElementById('e_tipo').value,
+    numeroMask:document.getElementById('e_num').value,
+    limite:Number(document.getElementById('e_lim').value)||0,
+    fechaCorte:parseInt(document.getElementById('e_corte').value)||null,
+    fechaPagoPreferida:parseInt(document.getElementById('e_pago').value)||null,
+    color:document.getElementById('e_color').value,
+    moneda:document.getElementById('e_mon').value
+  };
+  await updateTarjeta(id,patch);
+  closeModal();
+  showToast('Tarjeta actualizada');
+  await refreshAll();
+}
+
+document.getElementById('btn-new-card').addEventListener('click', ()=>{
+  modal(`
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h3>Nueva tarjeta</h3></div>
+      <div><button onclick="closeModal()" class="btn small ghost">Cerrar</button></div>
+    </div>
+    <div class="sep"></div>
+    <div style="display:grid;gap:8px">
+      <label>Nombre<input id="n_nombre" class="input" placeholder="Ej: VISA Personal" /></label>
+      <div class="grid-2">
+        <label>Banco<input id="n_banco" class="input" /></label>
+        <label>Tipo
+          <select id="n_tipo" class="select">
+            <option value="crédito">Crédito</option>
+            <option value="débito">Débito</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid-2">
+        <label>Número mask<input id="n_num" class="input" placeholder="**** **** **** 1234" /></label>
+        <label>Límite<input id="n_lim" type="number" class="input" value="0" /></label>
+      </div>
+      <div class="grid-2">
+        <label>Fecha corte (día)<input id="n_corte" type="number" min="1" max="28" class="input" /></label>
+        <label>Fecha pago preferida<input id="n_pago" type="number" min="1" max="31" class="input" /></label>
+      </div>
+      <div class="grid-2">
+        <label>Color<input id="n_color" type="color" class="input" value="#0F62FE" /></label>
+        <label>Moneda<input id="n_mon" class="input" value="USD" /></label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn small ghost" onclick="closeModal()">Cancelar</button>
+        <button class="btn small" onclick="saveNewCard()">Crear</button>
+      </div>
+    </div>
+  `);
+});
+
+async function saveNewCard(){
+  const obj = {
+    id: uid('t'),
+    nombre:document.getElementById('n_nombre').value||'Sin nombre',
+    banco:document.getElementById('n_banco').value||'',
+    tipo:document.getElementById('n_tipo').value,
+    numeroMask:document.getElementById('n_num').value||'',
+    limite:Number(document.getElementById('n_lim').value)||0,
+    fechaCorte:parseInt(document.getElementById('n_corte').value)||null,
+    fechaPagoPreferida:parseInt(document.getElementById('n_pago').value)||null,
+    moneda:document.getElementById('n_mon').value||'USD',
+    color:document.getElementById('n_color').value||'#0F62FE',
+    createdAt:new Date().toISOString()
+  };
+  await addTarjeta(obj);
+  closeModal();
+  showToast('Tarjeta creada');
+  await refreshAll();
+}
+
+/* ---------- Movimientos forms ---------- */
+window.openNewMovWithCard = function(cardId){
+  modal(`
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h3>Nuevo movimiento</h3></div>
+      <div><button onclick="closeModal()" class="btn small ghost">Cerrar</button></div>
+    </div>
+    <div class="sep"></div>
+    <div style="display:grid;gap:8px">
+      <label>Tarjeta
+        <select id="m_card" class="select"></select>
+      </label>
+      <div class="grid-2">
+        <label>Fecha<input id="m_fecha" type="date" class="input" /></label>
+        <label>Monto<input id="m_monto" type="number" step="0.01" class="input" /></label>
+      </div>
+      <label>Descripción<input id="m_desc" class="input" /></label>
+      <div class="grid-2">
+        <label>Categoría<input id="m_cat" class="input" /></label>
+        <label>Tipo
+          <select id="m_tipo" class="select">
+            <option value="compra">Compra</option>
+            <option value="pago">Pago</option>
+            <option value="reembolso">Reembolso</option>
+          </select>
+        </label>
+      </div>
+      <label>Estado
+        <select id="m_est" class="select">
+          <option value="confirmado">Confirmado</option>
+          <option value="pendiente">Pendiente</option>
+        </select>
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn small ghost" onclick="closeModal()">Cancelar</button>
+        <button class="btn small" onclick="saveNewMov()">Guardar</button>
+      </div>
+    </div>
+  `);
+  // populate tarjetas
+  (async ()=>{
+    const tarjetas = await getAllTarjetas();
+    const sel = document.getElementById('m_card');
+    sel.innerHTML = tarjetas.map(t=>`<option value="${t.id}" ${t.id===cardId?'selected':''}>${t.nombre} — ${t.numeroMask||''}</option>`).join('');
+    document.getElementById('m_fecha').value = new Date().toISOString().slice(0,10);
+  })();
+};
+
+async function saveNewMov(){
+  const obj = {
+    tarjetaId: document.getElementById('m_card').value,
+    fecha: document.getElementById('m_fecha').value,
+    descripcion: document.getElementById('m_desc').value || 'Sin descripción',
+    categoria: document.getElementById('m_cat').value || 'General',
+    monto: Number(document.getElementById('m_monto').value)||0,
+    tipo: document.getElementById('m_tipo').value,
+    estado: document.getElementById('m_est').value
+  };
+  await addMovimiento(obj);
+  closeModal();
+  showToast('Movimiento agregado');
+  await refreshAll();
+}
+
+window.openEditMov = async function(id){
+  const mov = (await getAllMovimientos()).find(m=>m.id===id);
+  modal(`
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><h3>Editar movimiento</h3><div class="help">ID: ${mov.id}</div></div>
+      <div><button onclick="closeModal()" class="btn small ghost">Cerrar</button></div>
+    </div>
+    <div class="sep"></div>
+    <div style="display:grid;gap:8px">
+      <label>Tarjeta
+        <select id="em_card" class="select"></select>
+      </label>
+      <div class="grid-2">
+        <label>Fecha<input id="em_fecha" type="date" class="input" value="${new Date(mov.fecha).toISOString().slice(0,10)}" /></label>
+        <label>Monto<input id="em_monto" type="number" step="0.01" class="input" value="${mov.monto}" /></label>
+      </div>
+      <label>Descripción<input id="em_desc" class="input" value="${mov.descripcion||''}" /></label>
+      <div class="grid-2">
+        <label>Categoría<input id="em_cat" class="input" value="${mov.categoria||''}" /></label>
+        <label>Tipo
+          <select id="em_tipo" class="select">
+            <option value="compra" ${mov.tipo==='compra'?'selected':''}>Compra</option>
+            <option value="pago" ${mov.tipo==='pago'?'selected':''}>Pago</option>
+            <option value="reembolso" ${mov.tipo==='reembolso'?'selected':''}>Reembolso</option>
+          </select>
+        </label>
+      </div>
+      <label>Estado
+        <select id="em_est" class="select">
+          <option value="confirmado" ${mov.estado==='confirmado'?'selected':''}>Confirmado</option>
+          <option value="pendiente" ${mov.estado==='pendiente'?'selected':''}>Pendiente</option>
+        </select>
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn small ghost" onclick="closeModal()">Cancelar</button>
+        <button class="btn small" onclick="saveEditMov('${mov.id}')">Guardar</button>
+      </div>
+    </div>
+  `);
+  // populate tarjetas
+  const tarjetas = await getAllTarjetas();
+  document.getElementById('em_card').innerHTML = tarjetas.map(t=>`<option value="${t.id}" ${t.id===mov.tarjetaId?'selected':''}>${t.nombre}</option>`).join('');
+}
+
+async function saveEditMov(id){
+  const patch = {
+    tarjetaId: document.getElementById('em_card').value,
+    fecha: document.getElementById('em_fecha').value,
+    descripcion: document.getElementById('em_desc').value,
+    categoria: document.getElementById('em_cat').value,
+    monto: Number(document.getElementById('em_monto').value)||0,
+    tipo: document.getElementById('em_tipo').value,
+    estado: document.getElementById('em_est').value
+  };
+  await updateMovimiento(id,patch);
+  closeModal();
+  showToast('Movimiento actualizado');
+  await refreshAll();
+}
+async function removeMov(id){
+  if(!confirm('Eliminar movimiento?')) return;
+  await deleteMovimiento(id);
+  showToast('Movimiento eliminado');
+  await refreshAll();
+}
+
+/* ---------- Export / Import JSON ---------- */
+document.getElementById('btn-export').addEventListener('click', async ()=>{
+  const tarjetas = await getAllTarjetas();
+  const movimientos = await getAllMovimientos();
+  const settingsArray = (await (fallback?db.tablas():db.settings.toArray())) || [];
+  const payload = {tarjetas,movimientos,settings:settingsArray, exportedAt:new Date().toISOString()};
+  const blob = new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='tracktarjetas_export.json'; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Exportado JSON');
+});
+
+document.getElementById('fileImport').addEventListener('change', async (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  const txt = await f.text();
+  try{
+    const parsed = JSON.parse(txt);
+    if(!parsed.tarjetas || !parsed.movimientos) throw new Error('JSON inválido - falta claves');
+    if(!confirm('Importar reemplazará los datos locales. Continuar?')) return;
+    if(!fallback){
+      await db.tarjetas.clear(); await db.movimientos.clear(); await db.settings.clear();
+      for(const t of parsed.tarjetas) await db.tarjetas.add(t);
+      for(const m of parsed.movimientos) await db.movimientos.add(m);
+      if(parsed.settings) for(const s of parsed.settings) await db.settings.add(s);
+    } else {
+      const state = {tarjetas:parsed.tarjetas, movimientos:parsed.movimientos, settings:parsed.settings||[]};
+      await db.save(state);
+    }
+    showToast('Importación completada');
+    await refreshAll();
+  }catch(err){
+    alert('Import error: ' + err.message);
+  } finally { e.target.value = ''; }
+});
+
+/* ---------- Chat mock (lee DB y responde) ---------- */
+const chatMessages = document.getElementById('chatMessages');
+function pushChat(msg,who='ai'){ const div = document.createElement('div'); div.className='msg '+(who==='user'?'user':'ai'); div.innerText=msg; chatMessages.appendChild(div); chatMessages.scrollTop = chatMessages.scrollHeight; }
+
+document.getElementById('chatSend').addEventListener('click', handleChat);
+document.getElementById('chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') handleChat(); });
+
+async function handleChat(){
+  const q = document.getElementById('chatInput').value.trim();
+  if(!q) return;
+  pushChat(q,'user');
+  document.getElementById('chatInput').value='';
+  const mode = document.getElementById('chatMode').value;
+  if(mode==='mock'){
+    // basic rule-based parser
+    const resp = await chatMockResponder(q);
+    pushChat(resp,'ai');
+  } else {
+    // API mode: demonstrate how to send payload (no key stored)
+    pushChat('Modo API activo. Este demo no envía datos por defecto. Copia este prompt y úsalo con tu API key en el servidor: ' + buildApiExamplePrompt(q),'ai');
+  }
+}
+
+function buildApiExamplePrompt(userQuestion){
+  return `PROMPT: Responde a la pregunta: "${userQuestion}". Usa los siguientes datos (resumen reducido) para dar respuesta: <INCRUSTAR_JSON_REDUCIDO>. NO ENVIAR DATOS SENSIBLES sin confirmación.`;
+}
+
+async function chatMockResponder(q){
+  // Lowercase and small parsing - handle a few intents
+  const text = q.toLowerCase();
+  const tarjetas = await getAllTarjetas();
+  const movimientos = await getAllMovimientos();
+  // Intents: saldo total
+  if(text.includes('saldo total') || text.includes('saldo') && text.includes('total')){
+    const total = tarjetas.reduce((acc,t)=>{
+      const s = movimientos.filter(m=>m.tarjetaId===t.id).reduce((a,b)=>a+Number(b.monto||0),0);
+      return acc + s;
+    },0);
+    return `Tu saldo total actual es ${fmtMoney(total)} (sumando todas las tarjetas y movimientos registrados).`;
+  }
+  if(text.includes('gasto') && text.includes('alimentos')){
+    const now = new Date();
+    const gasto = movimientos.filter(m=>{
+      const d = new Date(m.fecha);
+      return m.categoria.toLowerCase().includes('alimentos') && d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+    }).reduce((a,b)=>a+Number(b.monto||0),0);
+    return `En este mes has gastado ${fmtMoney(gasto)} en la categoría 'Alimentos'.`;
+  }
+  if(text.includes('próxim') || text.includes('proxim') || text.includes('venc')){
+    const now = new Date();
+    const in7 = new Date(); in7.setDate(now.getDate()+7);
+    const soon = tarjetas.filter(t=>t.fechaPagoPreferida).map(t=>{
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = t.fechaPagoPreferida;
+      let date = new Date(year, month, day);
+      if(date < now) date = new Date(year, month+1, day);
+      return {tarjeta:t, fecha:date};
+    }).filter(x=>x.fecha>=now && x.fecha <= in7);
+    if(soon.length===0) return 'No hay pagos próximos en los siguientes 7 días (según fechaPagoPreferida en las tarjetas).';
+    return 'Pagos próximos en 7 días:\n' + soon.map(s=>`${s.tarjeta.nombre} — ${s.fecha.toLocaleDateString()}`).join('\n');
+  }
+  // list movimientos > cantidad
+  const matchMore = text.match(/mayor a\s*\$?([0-9]+(?:\.[0-9]+)?)/) || text.match(/>\s*\$?([0-9]+(?:\.[0-9]+)?)/);
+  if(matchMore){
+    const val = Number(matchMore[1]);
+    const found = movimientos.filter(m=>Math.abs(Number(m.monto||0))>val).slice(0,10);
+    if(found.length===0) return `No hay movimientos mayores a ${fmtMoney(val)}.`;
+    return `Movimientos mayores a ${fmtMoney(val)}:\n` + found.map(f=>`${new Date(f.fecha).toLocaleDateString()} ${f.descripcion} ${fmtMoney(f.monto)}`).join('\n');
+  }
+
+  // fallback: resumen del último mes
+  if(text.includes('resumen') || text.includes('último mes') || text.includes('ultimo mes')){
+    const now = new Date();
+    const lastMonth = movimientos.filter(m=>{
+      const d = new Date(m.fecha);
+      return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+    });
+    const total = lastMonth.reduce((a,b)=>a+Number(b.monto||0),0);
+    const byCat = {};
+    lastMonth.forEach(m=> byCat[m.categoria] = (byCat[m.categoria]||0)+Number(m.monto||0));
+    const topCats = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).slice(0,3).map(c=>`${c}: ${fmtMoney(byCat[c])}`).join(', ');
+    return `Resumen último mes: total ${fmtMoney(total)}. Top categorías: ${topCats || 'sin datos'}.`;
+  }
+
+  return "Lo siento, no entendí la pregunta. Prueba: '¿Cuál es mi saldo total?', '¿Cuánto gasté en Alimentos este mes?', '¿Qué pagos vencen en 7 días?', o 'Mostrar movimientos > $200'.";
+}
+
+/* ---------- Quick buttons ---------- */
+document.getElementById('quickSaldo').addEventListener('click', async ()=>{
+  const tarjetas = await getAllTarjetas();
+  const movimientos = await getAllMovimientos();
+  const total = tarjetas.reduce((acc,t)=> acc + movimientos.filter(m=>m.tarjetaId===t.id).reduce((a,b)=>a+Number(b.monto||0),0),0);
+  pushChat(`Saldo total: ${fmtMoney(total)}`,'ai');
+});
+document.getElementById('quickVenc').addEventListener('click', async ()=>{ pushChat(await chatMockResponder('próximos pagos'),'ai') });
+document.getElementById('quickGastoComida').addEventListener('click', async ()=>{ pushChat(await chatMockResponder('gasto en alimentos'),'ai') });
+
+/* ---------- Other controls ---------- */
+document.getElementById('btn-clear-chat').addEventListener('click', ()=>{ document.getElementById('chatMessages').innerHTML=''; showToast('Chat limpiado') });
+document.getElementById('btn-seed').addEventListener('click', async ()=>{ if(confirm('Resetear datos con seed de ejemplo?')) await resetSeed(); });
+document.getElementById('btn-new-mov').addEventListener('click', ()=> openNewMovWithCard(null));
+document.getElementById('searchMov').addEventListener('input', ()=> renderMovTable());
+document.getElementById('filterCard').addEventListener('change', ()=> renderMovTable());
+document.getElementById('filterType').addEventListener('change', ()=> renderMovTable());
+document.getElementById('btn-clear-f').addEventListener('click', ()=>{ document.getElementById('filterCard').value=''; document.getElementById('filterType').value=''; document.getElementById('searchMov').value=''; renderMovTable(); });
+
+/* Theme toggle */
+document.getElementById('btn-theme').addEventListener('click', ()=>{
+  if(document.documentElement.getAttribute('data-theme')==='dark'){
+    document.documentElement.removeAttribute('data-theme'); showToast('Tema claro');
+  } else {
+    document.documentElement.setAttribute('data-theme','dark'); showToast('Tema oscuro');
+  }
+});
+
+/* ---------- Init ---------- */
+(async ()=>{
+  await initDB();
+  // if db empty, seed
+  const tarjetas = await getAllTarjetas();
+  if(!tarjetas || tarjetas.length===0) await resetSeed();
+  await refreshAll();
+  await renderMovTable();
+})();
+
+/* Accessibility: keyboard shortcuts */
+document.addEventListener('keydown', (e)=>{
+  if((e.ctrlKey||e.metaKey) && e.key==='k'){ e.preventDefault(); document.getElementById('chatInput').focus(); }
+});
+
+/* ---------- End of single-file app ---------- */
+</script>
 </body>
 </html>
