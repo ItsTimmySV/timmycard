@@ -529,6 +529,14 @@ function TransactionForm({ onSubmit, categories }) {
     note: "",
   });
 
+  // Mantener la categoría coherente con el tipo seleccionado
+  useEffect(() => {
+    const list = form.type === "ingreso" ? categories.ingreso : categories.gasto;
+    if (!list.includes(form.category)) {
+      setForm((f) => ({ ...f, category: list[0] || "" }));
+    }
+  }, [form.type, categories]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const amount = Number(form.amount);
@@ -554,7 +562,11 @@ function TransactionForm({ onSubmit, categories }) {
         <label className="text-xs text-slate-500">Tipo</label>
         <select
           value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value })}
+          onChange={(e) => {
+            const nextType = e.target.value;
+            const nextList = nextType === "ingreso" ? categories.ingreso : categories.gasto;
+            setForm((f) => ({ ...f, type: nextType, category: nextList[0] || "" }));
+          }}
           className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
         >
           <option value="ingreso">Ingreso</option>
@@ -1243,15 +1255,16 @@ function quote(s) {
 // ---------------------- Tests básicos (console) -----------------------
 (function devTests() {
   try {
-    // Test: monthKey produce YYYY-MM
+    // Test: monthKey produce YYYY-MM (sin regex para evitar escapes en reemplazo)
     const mk = monthKey("2025-11-05");
-    if (!/^\d{4}-\d{2}$/.test(mk)) throw new Error("monthKey formato inválido");
+    const mkOk = mk && mk.length === 7 && mk[4] === '-' && !isNaN(+mk.slice(0,4)) && !isNaN(+mk.slice(5,7));
+    if (!mkOk) throw new Error("monthKey formato inválido");
 
     // Test: CSV mínimo
     const csv = makeCSV([
       { date: "2025-11-05", type: "ingreso", category: "Salario", account: "Banco", amount: 1000, note: "" },
     ]);
-    if (!csv.startsWith("data:text/csv")) throw new Error("CSV data URI no generado");
+    if (typeof csv !== 'string' || csv.indexOf('data:text/csv') !== 0) throw new Error("CSV data URI no generado");
 
     // Test: upsertBudget lógica pura
     let state = { "2025-11": { Alimentos: 100 } };
@@ -1268,9 +1281,46 @@ function quote(s) {
     const newBal = Math.max(0, bal - principal);
     if (!(newBal < bal)) throw new Error("balance debe decrecer si pago > interés");
 
-    // Si todo OK
+    // **Nuevo** Test: cambiar tipo sincroniza categoría
+    const cats = { ingreso: ["Salario", "Ventas"], gasto: ["Alimentación", "Transporte"] };
+    let f = { type: "gasto", category: "Alimentación" };
+    const switchType = (nextType) => {
+      const list = nextType === "ingreso" ? cats.ingreso : cats.gasto;
+      f = { ...f, type: nextType, category: (list && list[0]) || "" };
+    };
+    switchType("ingreso");
+    if (f.category !== "Salario") throw new Error("sincronización tipo→categoría falló");
+
     // console.log("Tests OK");
   } catch (e) {
     console.error("Dev test fallo:", e.message);
   }
 })();
+
+/*
+================== STANDALONE (copiar y pegar en index.html) ==================
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Finanzas Personales</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+    <script type="module">
+      import React, { useEffect, useMemo, useRef, useState } from 'https://esm.sh/react@18';
+      import { createRoot } from 'https://esm.sh/react-dom@18/client';
+      import { LineChart, Line, PieChart, Pie, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, CartesianGrid } from 'https://esm.sh/recharts@2';
+
+      // Copia aquí el componente FinanceApp completo desde este archivo
+      // y al final ejecuta:
+      // createRoot(document.getElementById('root')).render(React.createElement(FinanceApp));
+    </script>
+  </body>
+</html>
+
+=============================================================================
+*/
