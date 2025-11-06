@@ -6,38 +6,78 @@
 <title>Finanzas Personales</title>
 <meta name="description" content="App web para gestionar ingresos, gastos, presupuestos y deudas. 100% local, sin librerías.">
 <style>
+  /* ========== PALETA (solo colores) ========== */
   :root{
-    --bg:#0b1221;--card:#0f172a;--muted:#94a3b8;--text:#e2e8f0;--accent:#6366f1;
-    --green:#16a34a;--red:#ef4444;--amber:#f59e0b;--border:#1e293b;
+    /* Fondo y superficies */
+    --bg:#0c1222;            /* fondo base (azul marino profundo) */
+    --card:#0f172a;          /* tarjetas/superficie */
+    --border:#1e293b;        /* bordes/sutil */
+    /* Texto */
+    --text:#e6eaf2;          /* texto principal */
+    --muted:#94a3b8;         /* texto secundario */
+    /* Acento principal (rosa, como en la primera web) */
+    --accent:#f472b6;        /* rosa vivo para resaltes */
+    --accent-ghost:rgba(244,114,182,.12); /* relleno suave para estados activos */
+    /* Estados y métricas */
+    --green:#22c55e;         /* ok / ingresos / progreso bajo */
+    --red:#ef4444;           /* gastos / error / sobrepasado */
+    --amber:#f59e0b;         /* advertencia / medio uso */
   }
+
   *{box-sizing:border-box} html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
   .container{max-width:1140px;margin:0 auto;padding:0 16px 80px}
-  header{position:sticky;top:0;z-index:10;background:rgba(11,18,33,.85);backdrop-filter:blur(6px);border-bottom:1px solid var(--border)}
+
+  header{position:sticky;top:0;z-index:10;background:rgba(12,18,34,.85);backdrop-filter:blur(6px);border-bottom:1px solid var(--border)}
   .hwrap{display:flex;align-items:center;justify-content:space-between;padding:12px 16px}
   .brand{display:flex;gap:10px;align-items:center}
-  .badge{height:34px;width:34px;border-radius:10px;background:var(--accent);display:grid;place-items:center;font-weight:700}
-  .btn,.chip{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:12px;padding:8px 12px;cursor:pointer}
-  .btn:hover{background:#0b1530}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:white}
-  .tabs{display:flex;gap:6px;flex-wrap:wrap;border:1px solid var(--border);border-radius:16px;padding:6px;margin:16px 0}
-  .tab{padding:8px 12px;border-radius:10px;cursor:pointer}
-  .tab.active{background:#0b1530}
+  .badge{height:34px;width:34px;border-radius:10px;background:var(--accent);display:grid;place-items:center;font-weight:700;color:#0b0810}
+
+  .btn,.chip{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:12px;padding:8px 12px;cursor:pointer;transition:background .15s,border-color .15s}
+  .btn:hover{background:#101a33}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#0b0810}
+  .btn.primary:hover{filter:brightness(1.05)}
+
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;border:1px solid var(--border);border-radius:16px;padding:6px;margin:16px 0;background:#0b1327}
+  .tab{padding:8px 12px;border-radius:10px;cursor:pointer;border:1px solid transparent;color:var(--text)}
+  .tab:hover{background:#0f1933}
+  .tab.active{background:var(--accent-ghost);border-color:var(--accent);color:#fff}
+
   .grid{display:grid;gap:12px}
   @media(min-width:900px){.grid.cols-3{grid-template-columns:2fr 1fr}}
   @media(min-width:900px){.grid.cols-2{grid-template-columns:1fr 1fr}}
+
   .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px}
-  .muted{color:var(--muted)} .title{font-weight:700;font-size:16px;margin:0 0 8px}
-  label{font-size:12px;color:var(--muted)} input,select,textarea{width:100%;background:#0b1530;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px}
-  table{width:100%;border-collapse:collapse} th,td{padding:10px;text-align:left} thead th{color:var(--muted);font-weight:500}
+  .muted{color:var(--muted)}
+  .title{font-weight:700;font-size:16px;margin:0 0 8px}
+
+  label{font-size:12px;color:var(--muted)}
+  input,select,textarea{
+    width:100%;background:#0b1530;border:1px solid var(--border);color:var(--text);
+    padding:10px;border-radius:10px
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ghost)}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;text-align:left}
+  thead th{color:var(--muted);font-weight:500}
   tbody tr{border-top:1px solid var(--border)}
-  .row{display:grid;gap:10px} @media(min-width:640px){.row.cols-2{grid-template-columns:1fr 1fr}}
+
+  .row{display:grid;gap:10px}
+  @media(min-width:640px){.row.cols-2{grid-template-columns:1fr 1fr}}
+
   .pill{padding:2px 8px;border-radius:999px;background:#0b1530;border:1px solid var(--border);color:var(--muted);font-size:12px}
   .ok{color:var(--green)} .bad{color:var(--red)} .warn{color:var(--amber)}
+
   .progress{height:6px;border-radius:999px;background:#0b1530;border:1px solid var(--border);overflow:hidden}
   .progress>i{display:block;height:100%}
-  .flex{display:flex;align-items:center;gap:8px} .right{margin-left:auto}
+
+  .flex{display:flex;align-items:center;gap:8px}
+  .right{margin-left:auto}
+
   .footer{border-top:1px solid var(--border);padding:20px;text-align:center;color:var(--muted)}
+
+  /* leyenda gráficos */
   .dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
 </style>
 </head>
@@ -273,7 +313,7 @@ Otros</textarea>
 </main>
 
 <script>
-/* ------------- Utilidades ------------- */
+/* ------------ Utilidades ------------ */
 const $ = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
 const todayISO = () => new Date().toISOString().slice(0,10);
@@ -282,7 +322,7 @@ const fmt = (n,curr) => new Intl.NumberFormat("es-SV",{style:"currency",currency
 const uid = () => Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
 
-/* ------------- Estado + storage ------------- */
+/* ------------ Estado + storage ------------ */
 const STORAGE_KEY="fin_web_plain_v1";
 const DEFAULTS = {
   transactions: [],
@@ -296,13 +336,11 @@ const DEFAULTS = {
     }
   }
 };
-let state = load() || DEFAULTS;
-save();
-
+let state = load() || DEFAULTS; save();
 function load(){ try{ const raw=localStorage.getItem(STORAGE_KEY); return raw?JSON.parse(raw):null }catch(_){ return null } }
 function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){} }
 
-/* ------------- Tabs (arregladas) ------------- */
+/* ------------ Tabs (ya arregladas antes; sin cambios lógicos) ------------ */
 const TABS = [
   ["dashboard","Dashboard"],
   ["transacciones","Transacciones"],
@@ -311,18 +349,12 @@ const TABS = [
   ["reportes","Reportes"],
   ["config","Configuración"],
 ];
-// Usa el hash si es válido, si no, dashboard
 let activeTab = (location.hash && TABS.some(t=>t[0]===location.hash.slice(1))) ? location.hash.slice(1) : "dashboard";
 renderTabs(); highlightTabs(); showTab();
-
-// Cambios de hash (back/forward o enlaces)
 window.addEventListener('hashchange', ()=>{
   const id = location.hash.slice(1);
-  if (TABS.some(t=>t[0]===id)) {
-    activeTab = id; highlightTabs(); showTab();
-  }
+  if (TABS.some(t=>t[0]===id)) { activeTab = id; highlightTabs(); showTab(); }
 });
-
 function renderTabs(){
   const wrap=$("#tabs"); wrap.innerHTML="";
   TABS.forEach(([id,label])=>{
@@ -331,18 +363,13 @@ function renderTabs(){
     b.onclick=(e)=>{
       const tid=e.currentTarget.dataset.id;
       if(activeTab===tid) return;
-      activeTab=tid;
-      // actualiza URL y UI
-      location.hash = tid;
-      highlightTabs(); showTab();
+      activeTab=tid; location.hash = tid; highlightTabs(); showTab();
       e.currentTarget.scrollIntoView({block:'nearest',inline:'nearest'});
     };
     wrap.appendChild(b);
   });
 }
-function highlightTabs(){
-  $$(".tab").forEach(el=>el.classList.toggle("active", el.dataset.id===activeTab));
-}
+function highlightTabs(){ $$(".tab").forEach(el=>el.classList.toggle("active", el.dataset.id===activeTab)); }
 function showTab(){
   TABS.forEach(([id])=>$("#view-"+id).style.display = (activeTab===id?"grid":"none"));
   if(activeTab==="dashboard") renderDashboard();
@@ -353,7 +380,7 @@ function showTab(){
   if(activeTab==="config") renderSettings();
 }
 
-/* ------------- Dashboard ------------- */
+/* ------------ Dashboard ------------ */
 function renderDashboard(){
   const month = monthKey(new Date());
   const txM = state.transactions.filter(t=>monthKey(t.date)===month);
@@ -384,7 +411,7 @@ function renderDashboard(){
   $("#last-tx").innerHTML = makeTxTable(state.transactions.slice(0,8), state.settings.currency, false);
 }
 
-/* ------------- Transacciones ------------- */
+/* ------------ Transacciones ------------ */
 function renderTransactions(){
   $("#tx-date").value = todayISO();
   const syncCats = ()=>{
@@ -393,22 +420,16 @@ function renderTransactions(){
     const sel=$("#tx-category"); sel.innerHTML="";
     list.forEach(c=>{ const o=document.createElement("option"); o.value=o.textContent=c; sel.appendChild(o); });
   };
-  $("#tx-type").onchange = syncCats;
-  syncCats();
+  $("#tx-type").onchange = syncCats; syncCats();
 
   $("#tx-form").onsubmit = (e)=>{
     e.preventDefault();
     const amount = Number($("#tx-amount").value);
     if(!amount||amount<=0) return alert("Monto inválido");
     const t = {
-      id: uid(),
-      date: $("#tx-date").value,
-      type: $("#tx-type").value,
-      amount,
-      category: $("#tx-category").value,
-      fixed: $("#tx-fixed").checked,
-      account: $("#tx-account").value,
-      note: $("#tx-note").value
+      id: uid(), date: $("#tx-date").value, type: $("#tx-type").value, amount,
+      category: $("#tx-category").value, fixed: $("#tx-fixed").checked,
+      account: $("#tx-account").value, note: $("#tx-note").value
     };
     state.transactions = [t, ...state.transactions]; save();
     $("#tx-amount").value=""; $("#tx-note").value="";
@@ -452,7 +473,7 @@ function makeTxTable(items,currency,withActions){
   </div>`;
 }
 
-/* ------------- Presupuestos ------------- */
+/* ------------ Presupuestos ------------ */
 function renderBudgets(){
   const month=monthKey(new Date()); $("#bz-month").textContent=month;
   const sel=$("#bz-cat"); sel.innerHTML="";
@@ -518,15 +539,13 @@ function makeBudgetComparisonTable(bud, spentMap, currency){
         ${keys.map(c=>{
           const limit=bud[c]||0, spent=spentMap[c]||0, left=limit-spent;
           const pct = limit>0 ? clamp(Math.round(spent/limit*100),0,100) : 0;
-          const color = pct<80?'#16a34a':(pct<100?'#f59e0b':'#ef4444');
+          const bar = pct<80?'var(--green)':(pct<100?'var(--amber)':'var(--red)');
           return `<tr>
             <td style="font-weight:600">${c}</td>
             <td>${fmt(limit,currency)}</td>
             <td>${fmt(spent,currency)}</td>
             <td class="${left<0?'bad':''}">${fmt(left,currency)}</td>
-            <td>
-              <div class="progress"><i style="width:${pct}%;background:${color}"></i></div>
-            </td>
+            <td><div class="progress"><i style="width:${pct}%;background:${bar}"></i></div></td>
           </tr>`;
         }).join("")}
       </tbody>
@@ -534,7 +553,7 @@ function makeBudgetComparisonTable(bud, spentMap, currency){
   </div>`;
 }
 
-/* ------------- Deudas ------------- */
+/* ------------ Deudas ------------ */
 function renderDebts(){
   $("#debt-form").onsubmit=(e)=>{
     e.preventDefault();
@@ -582,9 +601,7 @@ function renderDebts(){
       const v=Number(prompt("Nuevo pago extra mensual", d.extraPayment||0) || d.extraPayment||0);
       d.extraPayment=v; save(); renderDebts();
     };
-    card.querySelector('[data-act="del"]').onclick=()=>{
-      state.debts=state.debts.filter(x=>x.id!==d.id); save(); renderDebts();
-    };
+    card.querySelector('[data-act="del"]').onclick=()=>{ state.debts=state.debts.filter(x=>x.id!==d.id); save(); renderDebts(); };
     list.appendChild(card);
   });
 }
@@ -596,12 +613,12 @@ function simulateDebt(d){
     const interest=bal*r; const principalPaid=Math.max(0,pay - interest); const newBal=Math.max(0, bal-principalPaid);
     schedule.push({month:months+1,interest,principalPaid,newBalance:newBal});
     totalInterest+=interest; bal=newBal; months++;
-    if(pay<=interest+1e-6){ months=null; break; }
+    if(pay<=interest+1e-6){ months=null; break; } // pago insuficiente
   }
   return {schedule,totalInterest,months};
 }
 
-/* ------------- Reportes ------------- */
+/* ------------ Reportes ------------ */
 function renderReports(){
   const fromEl=$("#rp-from"), toEl=$("#rp-to");
   if(!fromEl.value){ fromEl.value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10); }
@@ -627,11 +644,10 @@ function renderReports(){
     aEl.href = "data:text/csv;charset=utf-8,"+encodeURIComponent(csv);
     aEl.download = `reporte_${fromEl.value}_a_${toEl.value}.csv`;
   };
-  fromEl.onchange=toEl.onchange=refresh;
-  refresh();
+  fromEl.onchange=toEl.onchange=refresh; refresh();
 }
 
-/* ------------- Configuración ------------- */
+/* ------------ Configuración ------------ */
 function renderSettings(){
   $("#st-currency").value = state.settings.currency;
   $("#st-inc").value = state.settings.categories.ingreso.join("\n");
@@ -644,7 +660,7 @@ function renderSettings(){
   };
 }
 
-/* ------------- Export / Import ------------- */
+/* ------------ Export / Import ------------ */
 $("#exportJson").onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob);
@@ -661,16 +677,15 @@ $("#importFile").onchange=(e)=>{
       state.budgets = state.budgets||{};
       state.debts = Array.isArray(state.debts)?state.debts:[];
       state.settings = {...DEFAULTS.settings, ...(state.settings||{})};
-      save();
-      // Mantén la pestaña actual y refresca vistas + highlight
-      highlightTabs(); showTab();
+      save(); highlightTabs(); showTab();
     }catch(_){ alert("Archivo inválido."); }
   }; r.readAsText(file);
 };
 
-/* ------------- Dibujo de gráficos sin librerías ------------- */
+/* ------------ Gráficos (canvas) ------------ */
 function color(i){
-  const C=["#2563eb","#16a34a","#f59e0b","#ef4444","#10b981","#8b5cf6","#f43f5e","#22c55e","#3b82f6","#eab308","#06b6d4","#a855f7","#84cc16"];
+  /* Paleta alineada al acento rosa + verdes/azules para contraste */
+  const C=["#f472b6","#22c55e","#3b82f6","#f59e0b","#ef4444","#06b6d4","#a78bfa","#84cc16","#eab308","#10b981","#60a5fa","#f43f5e"];
   return C[i % C.length];
 }
 function drawBars(canvas, points){
@@ -678,13 +693,15 @@ function drawBars(canvas, points){
   ctx.clearRect(0,0,W,H); const pad=24;
   const max = Math.max(1, ...points.map(p=>Math.max(p.inc,p.exp)));
   const bw = (W-pad*2)/points.length;
+  /* eje */
   ctx.strokeStyle="#21314f"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad,H-pad); ctx.lineTo(W-pad,H-pad); ctx.stroke();
+  /* ingresos (verde) y gastos (rojo) */
   points.forEach((p,i)=>{
     const x=pad+i*bw+4;
     const hi = (p.inc/max)*(H-pad*2);
     const he = (p.exp/max)*(H-pad*2);
-    ctx.fillStyle="#16a34a"; ctx.fillRect(x, H-pad-hi, bw*0.35, hi);
-    ctx.fillStyle="#ef4444"; ctx.fillRect(x+bw*0.45, H-pad-he, bw*0.35, he);
+    ctx.fillStyle="var(--green)"; ctx.fillRect(x, H-pad-hi, bw*0.35, hi);
+    ctx.fillStyle="var(--red)";   ctx.fillRect(x+bw*0.45, H-pad-he, bw*0.35, he);
   });
 }
 function drawLine(canvas, seq){
@@ -693,7 +710,8 @@ function drawLine(canvas, seq){
   const max=Math.max(1,...seq.map(v=>Math.abs(v)));
   const mid=H/2;
   ctx.strokeStyle="#21314f"; ctx.beginPath(); ctx.moveTo(pad,mid); ctx.lineTo(W-pad,mid); ctx.stroke();
-  ctx.strokeStyle="#60a5fa"; ctx.lineWidth=2; ctx.beginPath();
+  ctx.strokeStyle="#f472b6"; /* línea acorde al acento */
+  ctx.lineWidth=2; ctx.beginPath();
   seq.forEach((v,i)=>{
     const x = pad + (i/(Math.max(1,seq.length-1)))*(W-pad*2);
     const y = mid - (v/max)*(H/2 - pad);
@@ -722,7 +740,7 @@ function drawPie(svgEl, legendEl, data){
   });
 }
 
-/* ------------- CSV helper ------------- */
+/* ------------ CSV ------------ */
 function makeCSV(rows){
   if(!rows.length) return "fecha,tipo,categoria,cuenta,monto,nota\n";
   const header="fecha,tipo,categoria,cuenta,monto,nota\n";
@@ -731,11 +749,8 @@ function makeCSV(rows){
   return header+body;
 }
 
-/* ------------- Inicialización ------------- */
-(function init(){
-  // fuerza el hash inicial para deep-linking
-  location.hash = activeTab;
-})();
+/* ------------ Init ------------ */
+(function init(){ location.hash = activeTab; })();
 </script>
 </body>
 </html>
