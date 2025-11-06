@@ -11,6 +11,8 @@
     <!-- React + ReactDOM (UMD) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- React 18 createRoot (UMD) -->
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom-client.production.min.js"></script>
     <!-- Recharts (UMD) -->
     <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
     <!-- Babel para transpilar JSX en el navegador (solo para GitHub Pages / hosting estático) -->
@@ -20,7 +22,7 @@
     <div id="root" class="min-h-screen"></div>
 
     <!-- App en JSX; Babel lo transpila on-the-fly en cualquier navegador moderno -->
-    <script type="text/babel">
+    <script type="text/babel" data-presets="env,react">
       const { useEffect, useMemo, useRef, useState } = React;
       const {
         LineChart,
@@ -758,7 +760,18 @@
       } catch(e) { console.error('Dev test fallo:', e.message); } })();
 
       // Montaje
-      ReactDOM.createRoot(document.getElementById('root')).render(<FinanceApp />);
+      (function mount(){
+        const el = document.getElementById('root');
+        if (window.ReactDOMClient && typeof window.ReactDOMClient.createRoot === 'function') {
+          window.ReactDOMClient.createRoot(el).render(<FinanceApp />);
+        } else if (window.ReactDOM && typeof window.ReactDOM.render === 'function') {
+          window.ReactDOM.render(<FinanceApp />, el);
+        } else if (window.ReactDOM && typeof window.ReactDOM.createRoot === 'function') {
+          window.ReactDOM.createRoot(el).render(<FinanceApp />);
+        } else {
+          el.innerHTML = '<div style="padding:16px;color:#ef4444">No se pudo montar React. Verifica que se cargaron las librerías UMD.</div>';
+        }
+      })();
     </script>
   </body>
 </html>
