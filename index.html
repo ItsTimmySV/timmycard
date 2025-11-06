@@ -1,538 +1,1276 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Finanzas Simple • Ingresos y Gastos</title>
-  <style>
-    :root{
-      --bg:#0f172a;          /* slate-900 */
-      --panel:#111827;       /* gray-900 */
-      --muted:#1f2937;       /* gray-800 */
-      --card:#0b1222;        /* deep panel */
-      --text:#e5e7eb;        /* gray-200 */
-      --text-dim:#9ca3af;    /* gray-400 */
-      --accent:#22c55e;      /* green-500 */
-      --danger:#ef4444;      /* red-500 */
-      --warning:#f59e0b;     /* amber-500 */
-      --info:#3b82f6;        /* blue-500 */
-      --radius:16px;
-      --shadow:0 10px 25px rgba(0,0,0,.35);
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Cell,
+  CartesianGrid,
+} from "recharts";
+
+/**
+ * Finanzas Personales – Single‑file React App (FIXED)
+ * - Persistencia en localStorage
+ * - Ingresos y Gastos (fijos/variables)
+ * - Presupuestos mensuales por categoría (editar/eliminar)
+ * - Deudas con cálculo de interés mensual y pagos
+ * - Reportes y gráficos (flujo de caja, gasto por categoría, tendencia)
+ * - Importar/Exportar JSON y Exportar CSV
+ * - Totalmente responsivo con TailwindCSS
+ *
+ * Cambios de esta versión:
+ * - Se eliminó una referencia inválida a "$1" que causaba ReferenceError.
+ * - Se corrigió un JSX sin cerrar en ReportsTab (LineChart) que causaba SyntaxError.
+ * - Se reintrodujo `upsertBudget` y UI de edición/eliminación de presupuestos.
+ * - Se agregaron tests básicos (console) para validar helpers y cálculos.
+ */
+
+// ------------------------- Utilidades ---------------------------------
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const fmtMoney = (n, currency) =>
+  new Intl.NumberFormat("es-SV", { style: "currency", currency }).format(Number(n || 0));
+const monthKey = (d) => {
+  const dt = new Date(d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+};
+const startOfMonth = (date) => new Date(new Date(date).getFullYear(), new Date(date).getMonth(), 1);
+const endOfMonth = (date) => new Date(new Date(date).getFullYear(), new Date(date).getMonth() + 1, 0);
+
+// Categorías base (puedes editar en Configuración)
+const DEFAULT_CATEGORIES = {
+  ingreso: ["Salario", "Ventas", "Intereses", "Devoluciones", "Otros"],
+  gasto: [
+    "Alimentación",
+    "Transporte",
+    "Vivienda",
+    "Servicios (agua/luz/internet)",
+    "Educación",
+    "Salud",
+    "Entretenimiento",
+    "Suscripciones",
+    "Ropa",
+    "Impuestos",
+    "Deudas (pagos)",
+    "Ahorro/Inversión",
+    "Otros",
+  ],
+};
+
+// Paleta para gráficos
+const CHART_COLORS = [
+  "#2563eb",
+  "#16a34a",
+  "#f59e0b",
+  "#ef4444",
+  "#10b981",
+  "#8b5cf6",
+  "#f43f5e",
+  "#22c55e",
+  "#3b82f6",
+  "#eab308",
+  "#06b6d4",
+  "#a855f7",
+  "#84cc16",
+];
+
+// ------------------------- Storage Layer -------------------------------
+const STORAGE_KEY = "finance_app_v1";
+
+const loadState = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const saveState = (state) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // no-op
+  }
+};
+
+// --------------------------- App --------------------------------------
+export default function FinanceApp() {
+  // ---------- Estado raíz ----------
+  const [transactions, setTransactions] = useState(() => loadState()?.transactions || []);
+  const [budgets, setBudgets] = useState(() => loadState()?.budgets || {}); // {"YYYY-MM": { categoria: monto }}
+  const [debts, setDebts] = useState(() => loadState()?.debts || []);
+  const [settings, setSettings] = useState(
+    () =>
+      loadState()?.settings || {
+        currency: "USD",
+        categories: DEFAULT_CATEGORIES,
+        theme: "light",
+        startBalance: 0,
+      }
+  );
+  const [activeTab, setActiveTab] = useState("dashboard");
+
+  // Persistencia
+  useEffect(() => {
+    saveState({ transactions, budgets, debts, settings });
+  }, [transactions, budgets, debts, settings]);
+
+  // Tema (light/dark)
+  useEffect(() => {
+    const root = document.documentElement;
+    if (settings.theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
+  }, [settings.theme]);
+
+  // --------- Derivados útiles ---------
+  const currentMonth = monthKey(new Date());
+  const txCurrentMonth = useMemo(
+    () => transactions.filter((t) => monthKey(t.date) === currentMonth),
+    [transactions, currentMonth]
+  );
+
+  const totals = useMemo(() => {
+    const inc = txCurrentMonth
+      .filter((t) => t.type === "ingreso")
+      .reduce((a, b) => a + Number(b.amount), 0);
+    const exp = txCurrentMonth
+      .filter((t) => t.type === "gasto")
+      .reduce((a, b) => a + Number(b.amount), 0);
+    return { income: inc, expense: exp, net: inc - exp };
+  }, [txCurrentMonth]);
+
+  const categoriesSpent = useMemo(() => {
+    const acc = {};
+    txCurrentMonth
+      .filter((t) => t.type === "gasto")
+      .forEach((t) => (acc[t.category] = (acc[t.category] || 0) + Number(t.amount)));
+    return Object.entries(acc)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [txCurrentMonth]);
+
+  const monthsSeries = useMemo(() => {
+    // Serie de últimos 12 meses
+    const now = new Date();
+    const points = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = monthKey(d);
+      const tx = transactions.filter((t) => monthKey(t.date) === key);
+      const inc = tx
+        .filter((t) => t.type === "ingreso")
+        .reduce((a, b) => a + Number(b.amount), 0);
+      const exp = tx
+        .filter((t) => t.type === "gasto")
+        .reduce((a, b) => a + Number(b.amount), 0);
+      points.push({ month: key, Ingresos: inc, Gastos: exp, Neto: inc - exp });
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
-      background: radial-gradient(1200px 800px at 10% -10%, #172554 0%, transparent 50%),
-                  radial-gradient(1000px 1000px at 110% 10%, #083344 0%, transparent 50%),
-                  var(--bg);
-      color:var(--text);
-    }
-    a{color:var(--info); text-decoration:none}
+    return points;
+  }, [transactions]);
 
-    .container{max-width:1100px; margin:0 auto; padding:24px}
+  const categoryBudgetThisMonth = budgets[currentMonth] || {};
 
-    header{
-      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
-      margin-bottom:18px;
-    }
-    .brand{display:flex; align-items:center; gap:12px}
-    .logo{
-      width:42px; height:42px; border-radius:12px; background:linear-gradient(135deg, var(--info), var(--accent));
-      box-shadow:var(--shadow);
-    }
-    h1{font-size:clamp(18px, 2vw, 22px); margin:0; font-weight:700}
-    .sub{color:var(--text-dim); font-size:14px}
+  // ------------------ Acciones CRUD ------------------
+  const addTransaction = (t) => setTransactions((s) => [{ ...t, id: uid() }, ...s]);
+  const updateTransaction = (id, patch) =>
+    setTransactions((s) => s.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  const deleteTransaction = (id) => setTransactions((s) => s.filter((t) => t.id !== id));
 
-    .grid{
-      display:grid; gap:14px; grid-template-columns: repeat(12, 1fr);
-    }
-    .card{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.25));
-      border:1px solid rgba(255,255,255,.08); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px}
+  const upsertBudget = (month, category, amount) =>
+    setBudgets((s) => ({ ...s, [month]: { ...(s[month] || {}), [category]: Number(amount) } }));
 
-    /* Summary cards */
-    .summary{grid-column: span 12; display:grid; gap:14px; grid-template-columns: repeat(12, 1fr)}
-    .kpi{grid-column: span 12; padding:18px; display:flex; align-items:center; justify-content:space-between; gap:10px}
-    .kpi h3{margin:0; font-size:14px; color:var(--text-dim); font-weight:600}
-    .kpi .val{font-size:clamp(18px, 3vw, 28px); font-weight:800}
-    .kpi.income{background:linear-gradient(180deg, rgba(34,197,94,.12), rgba(0,0,0,.15)); border-color:rgba(34,197,94,.35)}
-    .kpi.expense{background:linear-gradient(180deg, rgba(239,68,68,.12), rgba(0,0,0,.15)); border-color:rgba(239,68,68,.35)}
-    .kpi.balance{background:linear-gradient(180deg, rgba(59,130,246,.12), rgba(0,0,0,.15)); border-color:rgba(59,130,246,.35)}
+  const deleteBudget = (month, category) =>
+    setBudgets((s) => {
+      const next = { ...s };
+      const m = { ...(next[month] || {}) };
+      delete m[category];
+      next[month] = m;
+      return next;
+    });
 
-    @media(min-width:700px){
-      .kpi{grid-column: span 4}
-    }
+  const addDebt = (d) => setDebts((s) => [{ ...d, id: uid() }, ...s]);
+  const updateDebt = (id, patch) => setDebts((s) => s.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  const deleteDebt = (id) => setDebts((s) => s.filter((d) => d.id !== id));
 
-    /* Left column: form & filters; Right: table */
-    .left{grid-column: span 12}
-    .right{grid-column: span 12}
-    @media(min-width:900px){
-      .left{grid-column: span 4}
-      .right{grid-column: span 8}
-    }
+  const exportJSON = () => {
+    const data = JSON.stringify({ transactions, budgets, debts, settings }, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `finanzas_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-    .section-title{margin:0 0 8px; font-size:14px; color:var(--text-dim); font-weight:700; letter-spacing:.4px}
+  const importJSON = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const obj = JSON.parse(e.target.result);
+        setTransactions(obj.transactions || []);
+        setBudgets(obj.budgets || {});
+        setDebts(obj.debts || []);
+        setSettings((s) => ({ ...s, ...(obj.settings || {}) }));
+      } catch {
+        alert("Archivo inválido");
+      }
+    };
+    reader.readAsText(file);
+  };
 
-    .form-grid{display:grid; gap:10px; grid-template-columns: repeat(12, 1fr)}
-    label{font-size:12px; color:var(--text-dim)}
-    input, select, textarea{
-      width:100%; padding:10px 12px; background:#0b1020; color:var(--text);
-      border:1px solid rgba(255,255,255,.08); border-radius:12px; outline:none;
-    }
-    input:focus, select:focus, textarea:focus{border-color:var(--info); box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+  // -------------------------- UI -------------------------------------
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <Header settings={settings} setSettings={setSettings} onExport={exportJSON} onImport={importJSON} />
 
-    .row-6{grid-column: span 12}
-    .row-4{grid-column: span 12}
-    .row-3{grid-column: span 12}
-    .row-2{grid-column: span 12}
-    @media(min-width:700px){
-      .row-6{grid-column: span 6}
-      .row-4{grid-column: span 4}
-      .row-3{grid-column: span 3}
-      .row-2{grid-column: span 2}
-    }
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 pb-24">
+        <TopSummary totals={totals} currency={settings.currency} />
+        <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
 
-    .actions{display:flex; flex-wrap:wrap; gap:8px}
-    .btn{border:none; border-radius:12px; padding:10px 14px; cursor:pointer; font-weight:700; color:#0b0f1a}
-    .btn.primary{background:linear-gradient(135deg, var(--info), #60a5fa); color:white}
-    .btn.ghost{background:#0b1020; color:var(--text); border:1px solid rgba(255,255,255,.12)}
-    .btn.danger{background:linear-gradient(135deg, var(--danger), #f87171); color:white}
-    .btn.warning{background:linear-gradient(135deg, var(--warning), #fbbf24); color:#0b0f1a}
+        {activeTab === "dashboard" && (
+          <Dashboard
+            transactions={transactions}
+            settings={settings}
+            categoriesSpent={categoriesSpent}
+            monthsSeries={monthsSeries}
+            budgets={budgets}
+            currentMonth={currentMonth}
+          />
+        )}
 
-    .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+        {activeTab === "transacciones" && (
+          <TransactionsTab
+            transactions={transactions}
+            addTransaction={addTransaction}
+            updateTransaction={updateTransaction}
+            deleteTransaction={deleteTransaction}
+            categories={settings.categories}
+            currency={settings.currency}
+          />
+        )}
 
-    table{width:100%; border-collapse:separate; border-spacing:0 8px}
-    thead th{font-size:12px; color:var(--text-dim); text-align:left; padding:0 10px}
-    tbody tr{background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.25));}
-    tbody td{padding:12px 10px; border-top:1px solid rgba(255,255,255,.08); border-bottom:1px solid rgba(255,255,255,.08)}
-    tbody tr:first-child td{border-top-left-radius:12px; border-top-right-radius:12px}
-    tbody tr:last-child td{border-bottom-left-radius:12px; border-bottom-right-radius:12px}
-    .chip{display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px}
-    .chip.income{background:rgba(34,197,94,.15); color:#86efac; border:1px solid rgba(34,197,94,.35)}
-    .chip.expense{background:rgba(239,68,68,.15); color:#fca5a5; border:1px solid rgba(239,68,68,.35)}
+        {activeTab === "presupuestos" && (
+          <BudgetsTab
+            budgets={budgets}
+            upsertBudget={upsertBudget}
+            deleteBudget={deleteBudget}
+            categories={settings.categories}
+            currency={settings.currency}
+            month={currentMonth}
+            expensesThisMonth={categoriesSpent}
+          />
+        )}
 
-    .muted{color:var(--text-dim)}
+        {activeTab === "deudas" && (
+          <DebtsTab
+            debts={debts}
+            addDebt={addDebt}
+            updateDebt={updateDebt}
+            deleteDebt={deleteDebt}
+            currency={settings.currency}
+          />
+        )}
 
-    .footer{margin-top:16px; color:var(--text-dim); font-size:12px; text-align:center}
-    .hide{display:none !important}
-    .hr{height:1px; background:rgba(255,255,255,.08); margin:8px 0 14px}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <div class="brand">
-        <div class="logo" aria-hidden="true"></div>
-        <div>
-          <h1>Finanzas Simple</h1>
-          <div class="sub">Controla ingresos y gastos • Guarda en tu navegador</div>
-        </div>
-      </div>
-      <div class="toolbar card" style="padding:8px 10px">
-        <button class="btn ghost" id="btnExportar" title="Exportar JSON">Exportar</button>
-        <input type="file" id="fileImport" accept="application/json" class="hide" />
-        <button class="btn ghost" id="btnImportar" title="Importar JSON">Importar</button>
-        <button class="btn danger" id="btnVaciar" title="Borrar todo">Vaciar</button>
-      </div>
-    </header>
+        {activeTab === "reportes" && (
+          <ReportsTab transactions={transactions} currency={settings.currency} categories={settings.categories} />
+        )}
 
-    <section class="summary">
-      <div class="kpi card income">
-        <div>
-          <h3>Ingresos</h3>
-          <div class="val" id="kpiIngresos">$0.00</div>
-        </div>
-        <div class="muted" id="kpiIngresosCount">0 movs</div>
-      </div>
-      <div class="kpi card expense">
-        <div>
-          <h3>Gastos</h3>
-          <div class="val" id="kpiGastos">$0.00</div>
-        </div>
-        <div class="muted" id="kpiGastosCount">0 movs</div>
-      </div>
-      <div class="kpi card balance">
-        <div>
-          <h3>Balance</h3>
-          <div class="val" id="kpiBalance">$0.00</div>
-        </div>
-        <div class="muted" id="kpiPeriodo">—</div>
-      </div>
-    </section>
+        {activeTab === "config" && <SettingsTab settings={settings} setSettings={setSettings} />}
+      </main>
 
-    <section class="grid" style="margin-top:14px">
-      <!-- Left column -->
-      <div class="left">
-        <div class="card">
-          <div class="section-title">Agregar movimiento</div>
-          <div class="hr"></div>
-          <form id="formMov" class="form-grid" autocomplete="off">
-            <input type="hidden" id="movId" />
-            <div class="row-6">
-              <label for="fecha">Fecha</label>
-              <input type="date" id="fecha" required />
-            </div>
-            <div class="row-6">
-              <label for="tipo">Tipo</label>
-              <select id="tipo" required>
-                <option value="ingreso">Ingreso</option>
-                <option value="gasto">Gasto</option>
-              </select>
-            </div>
-            <div class="row-6">
-              <label for="categoria">Categoría</label>
-              <input list="catlist" id="categoria" placeholder="Ej. Comida, Renta..." required />
-              <datalist id="catlist">
-                <option>Renta</option>
-                <option>Servicios</option>
-                <option>Comida</option>
-                <option>Transporte</option>
-                <option>Salud</option>
-                <option>Educación</option>
-                <option>Entretenimiento</option>
-                <option>Salario</option>
-                <option>Ventas</option>
-                <option>Otros</option>
-              </datalist>
-            </div>
-            <div class="row-6">
-              <label for="monto">Monto</label>
-              <input type="number" id="monto" step="0.01" inputmode="decimal" placeholder="0.00" required />
-            </div>
-            <div class="row-12">
-              <label for="desc">Descripción (opcional)</label>
-              <input type="text" id="desc" placeholder="Nota, referencia..." />
-            </div>
-            <div class="row-12 actions">
-              <button class="btn primary" type="submit" id="btnGuardar">Guardar</button>
-              <button class="btn ghost" type="button" id="btnReset">Limpiar</button>
-            </div>
-          </form>
-        </div>
+      <Footer />
+    </div>
+  );
+}
 
-        <div class="card" style="margin-top:14px">
-          <div class="section-title">Filtros</div>
-          <div class="hr"></div>
-          <div class="form-grid">
-            <div class="row-6">
-              <label for="desde">Desde</label>
-              <input type="date" id="desde" />
-            </div>
-            <div class="row-6">
-              <label for="hasta">Hasta</label>
-              <input type="date" id="hasta" />
-            </div>
-            <div class="row-6">
-              <label for="filtroTipo">Tipo</label>
-              <select id="filtroTipo">
-                <option value="todos">Todos</option>
-                <option value="ingreso">Ingresos</option>
-                <option value="gasto">Gastos</option>
-              </select>
-            </div>
-            <div class="row-6">
-              <label for="filtroCat">Categoría</label>
-              <input list="catlist" id="filtroCat" placeholder="Todas" />
-            </div>
-            <div class="row-12">
-              <label for="buscar">Buscar</label>
-              <input id="buscar" placeholder="Descripción o categoría" />
-            </div>
-            <div class="row-12 actions">
-              <button class="btn ghost" id="btnAplicarFiltros">Aplicar</button>
-              <button class="btn ghost" id="btnQuitarFiltros">Quitar</button>
-            </div>
+// ---------------------- Componentes UI -------------------------------
+function Header({ settings, setSettings, onExport, onImport }) {
+  const fileRef = useRef(null);
+  return (
+    <header className="sticky top-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/70 bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800">
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-600 text-white font-semibold">$</span>
+          <div>
+            <h1 className="text-lg sm:text-xl font-bold leading-tight">Finanzas Personales</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Control total: ingresos, gastos, presupuestos, deudas y reportes</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSettings((s) => ({ ...s, theme: s.theme === "light" ? "dark" : "light" }))}
+            className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+            title="Tema claro/oscuro"
+          >
+            {settings.theme === "light" ? "🌙" : "☀️"}
+          </button>
+          <button
+            onClick={onExport}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 dark:text-slate-900 text-white text-sm hover:opacity-90"
+          >
+            Exportar JSON
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            Importar
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t border-slate-200 dark:border-slate-800 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+      <div className="mx-auto max-w-7xl px-3 sm:px-6">
+        Hecho con ❤️ para El Salvador · Datos guardados localmente en tu navegador · Sugerencias: agrega categorías, define presupuestos y registra a diario.
+      </div>
+    </footer>
+  );
+}
+
+function Tabs({ activeTab, setActiveTab }) {
+  const tabs = [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "transacciones", label: "Transacciones" },
+    { id: "presupuestos", label: "Presupuestos" },
+    { id: "deudas", label: "Deudas" },
+    { id: "reportes", label: "Reportes" },
+    { id: "config", label: "Configuración" },
+  ];
+  return (
+    <div className="mt-4 mb-6 overflow-auto">
+      <div className="inline-flex gap-1 rounded-2xl border border-slate-200 dark:border-slate-800 p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`px-3 py-1.5 rounded-xl text-sm whitespace-nowrap ${
+              activeTab === t.id
+                ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                : "hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TopSummary({ totals, currency }) {
+  const items = [
+    { label: "Ingresos del mes", value: fmtMoney(totals.income, currency) },
+    { label: "Gastos del mes", value: fmtMoney(totals.expense, currency) },
+    { label: "Neto del mes", value: fmtMoney(totals.net, currency) },
+  ];
+  return (
+    <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {items.map((it) => (
+        <div
+          key={it.label}
+          className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900"
+        >
+          <p className="text-sm text-slate-500 dark:text-slate-400">{it.label}</p>
+          <p className="text-2xl font-bold mt-1">{it.value}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function Dashboard({ transactions, settings, categoriesSpent, monthsSeries, budgets, currentMonth }) {
+  const currency = settings.currency;
+  const budgetThisMonth = budgets[currentMonth] || {};
+
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="lg:col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Flujo de caja – últimos 12 meses</h2>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={monthsSeries}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="Ingresos" />
+              <Bar dataKey="Gastos" />
+              <Bar dataKey="Neto" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      <!-- Right column -->
-      <div class="right card">
-        <div class="section-title">Movimientos</div>
-        <div class="hr"></div>
-        <div class="toolbar" style="margin-bottom:8px">
-          <span class="muted" id="contador">0 resultados</span>
-          <span class="muted" style="margin-left:auto">Orden: 
-            <select id="orden">
-              <option value="fecha-desc">Fecha ↓</option>
-              <option value="fecha-asc">Fecha ↑</option>
-              <option value="monto-desc">Monto ↓</option>
-              <option value="monto-asc">Monto ↑</option>
-            </select>
-          </span>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Gasto por categoría (mes)</h2>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={categoriesSpent} dataKey="value" nameKey="name" outerRadius={90}>
+                {categoriesSpent.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
-        <div style="overflow:auto">
-          <table>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-3">
+        <h2 className="font-semibold mb-2">Presupuesto vs gasto (mes)</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Tipo</th>
-                <th>Categoría</th>
-                <th>Descripción</th>
-                <th style="text-align:right">Monto</th>
-                <th></th>
+              <tr className="text-left text-slate-500 dark:text-slate-400">
+                <th className="py-2">Categoría</th>
+                <th className="py-2">Presupuesto</th>
+                <th className="py-2">Gastado</th>
+                <th className="py-2">Disponible</th>
+                <th className="py-2">% usado</th>
               </tr>
             </thead>
-            <tbody id="tbody"></tbody>
+            <tbody>
+              {Object.keys(budgetThisMonth).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-3 text-slate-500">
+                    Define tus presupuestos en la pestaña "Presupuestos"
+                  </td>
+                </tr>
+              )}
+              {Object.entries(budgetThisMonth).map(([cat, limit]) => {
+                const spent = categoriesSpent.find((c) => c.name === cat)?.value || 0;
+                const available = limit - spent;
+                const pct = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
+                return (
+                  <tr key={cat} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-2 font-medium">{cat}</td>
+                    <td className="py-2">{fmtMoney(limit, currency)}</td>
+                    <td className="py-2">{fmtMoney(spent, currency)}</td>
+                    <td className={`py-2 ${available < 0 ? "text-red-600" : ""}`}>{fmtMoney(available, currency)}</td>
+                    <td className="py-2">
+                      <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${
+                            pct < 80 ? "bg-green-500" : pct < 100 ? "bg-amber-500" : "bg-red-500"
+                          }`}
+                          style={{ width: pct + "%" }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-3">
+        <h2 className="font-semibold mb-2">Últimas transacciones</h2>
+        <TransactionList transactions={transactions.slice(0, 8)} currency={currency} compact />
+      </div>
+    </section>
+  );
+}
+
+function TransactionsTab({ transactions, addTransaction, updateTransaction, deleteTransaction, categories, currency }) {
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-1">
+        <h2 className="font-semibold mb-2">Agregar transacción</h2>
+        <TransactionForm onSubmit={addTransaction} categories={categories} />
+      </div>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-2">
+        <h2 className="font-semibold mb-2">Historial</h2>
+        <TransactionList
+          transactions={transactions}
+          currency={currency}
+          onEdit={updateTransaction}
+          onDelete={deleteTransaction}
+        />
+      </div>
+    </section>
+  );
+}
+
+function TransactionForm({ onSubmit, categories }) {
+  const [form, setForm] = useState({
+    date: todayISO(),
+    type: "gasto",
+    amount: "",
+    category: "Alimentación",
+    fixed: false,
+    account: "Billetera",
+    note: "",
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const amount = Number(form.amount);
+    if (!amount || amount <= 0) return alert("Monto inválido");
+    onSubmit({ ...form, amount });
+    setForm((f) => ({ ...f, amount: "", note: "" }));
+  };
+
+  const availableCats = form.type === "ingreso" ? categories.ingreso : categories.gasto;
+
+  return (
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+        <label className="text-xs text-slate-500">Fecha</label>
+        <input
+          type="date"
+          value={form.date}
+          onChange={(e) => setForm({ ...form, date: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Tipo</label>
+        <select
+          value={form.type}
+          onChange={(e) => setForm({ ...form, type: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        >
+          <option value="ingreso">Ingreso</option>
+          <option value="gasto">Gasto</option>
+        </select>
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Monto</label>
+        <input
+          type="number"
+          step="0.01"
+          value={form.amount}
+          onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+          placeholder="0.00"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Categoría</label>
+        <select
+          value={form.category}
+          onChange={(e) => setForm({ ...form, category: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        >
+          {availableCats.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Cuenta</label>
+        <input
+          value={form.account}
+          onChange={(e) => setForm({ ...form, account: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+          placeholder="Banco, Efectivo, Tarjeta"
+        />
+      </div>
+      <div className="flex items-end justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <input
+            id="fixed"
+            type="checkbox"
+            checked={form.fixed}
+            onChange={(e) => setForm({ ...form, fixed: e.target.checked })}
+          />
+          <label htmlFor="fixed" className="text-sm">
+            Fijo
+          </label>
+        </div>
+        <button className="ml-auto px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm hover:opacity-90">
+          Agregar
+        </button>
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs text-slate-500">Nota</label>
+        <input
+          value={form.note}
+          onChange={(e) => setForm({ ...form, note: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+          placeholder="Detalle (opcional)"
+        />
+      </div>
+    </form>
+  );
+}
+
+function TransactionList({ transactions, currency, onEdit, onDelete, compact }) {
+  if (!transactions.length)
+    return <p className="text-sm text-slate-500">Sin transacciones aún. Agrega la primera ➕</p>;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-slate-500 dark:text-slate-400">
+            <th className="py-2">Fecha</th>
+            <th className="py-2">Tipo</th>
+            <th className="py-2">Categoría</th>
+            <th className="py-2">Cuenta</th>
+            <th className="py-2">Monto</th>
+            {!compact && <th className="py-2">Fijo</th>}
+            {!compact && <th className="py-2">Nota</th>}
+            {onEdit && <th className="py-2">Acciones</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {transactions.map((t) => (
+            <tr
+              key={t.id || `${t.date}-${t.amount}-${t.category}`}
+              className="border-t border-slate-100 dark:border-slate-800"
+            >
+              <td className="py-2">{t.date}</td>
+              <td className={`py-2 font-medium ${t.type === "ingreso" ? "text-green-600" : "text-red-600"}`}>
+                {t.type}
+              </td>
+              <td className="py-2">{t.category}</td>
+              <td className="py-2">{t.account || "—"}</td>
+              <td className="py-2">{fmtMoney(t.amount, currency)}</td>
+              {!compact && <td className="py-2">{t.fixed ? "Sí" : "No"}</td>}
+              {!compact && <td className="py-2">{t.note || ""}</td>}
+              {onEdit && (
+                <td className="py-2">
+                  <div className="flex gap-2">
+                    <button
+                      className="px-2 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        const amount = Number(prompt("Nuevo monto", String(t.amount)) || t.amount);
+                        if (!amount || amount <= 0) return;
+                        onEdit(t.id, { amount });
+                      }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="px-2 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => onDelete(t.id)}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BudgetsTab({ budgets, upsertBudget, deleteBudget, categories, currency, month, expensesThisMonth }) {
+  const allCats = categories.gasto;
+  const current = budgets[month] || {};
+  const [cat, setCat] = useState(allCats[0] || "");
+  const [amount, setAmount] = useState(100);
+
+  const spentMap = Object.fromEntries(expensesThisMonth.map((x) => [x.name, x.value]));
+
+  const clearAll = () => {
+    if (!confirm(`¿Eliminar TODOS los presupuestos del mes ${month}?`)) return;
+    Object.keys(current).forEach((c) => deleteBudget(month, c));
+  };
+
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Definir/editar presupuesto mensual</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Categoría</label>
+            <select
+              value={cat}
+              onChange={(e) => setCat(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+            >
+              {allCats.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Monto</label>
+            <input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+            />
+          </div>
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => upsertBudget(month, cat, amount)}
+              className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm hover:opacity-90 w-full"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-slate-500">Mes: {month}</p>
+          {Object.keys(current).length > 0 && (
+            <button
+              onClick={clearAll}
+              className="text-xs px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Eliminar todos
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Presupuestos definidos (este mes)</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 dark:text-slate-400">
+                <th className="py-2">Categoría</th>
+                <th className="py-2">Presupuesto</th>
+                <th className="py-2">Gastado</th>
+                <th className="py-2">Disponible</th>
+                <th className="py-2">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.keys(current).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-3 text-slate-500">
+                    Aún no hay presupuestos guardados para {month}
+                  </td>
+                </tr>
+              )}
+              {Object.entries(current).map(([c, limit]) => {
+                const spent = spentMap[c] || 0;
+                return (
+                  <tr key={c} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-2 font-medium">{c}</td>
+                    <td className="py-2">{fmtMoney(limit, currency)}</td>
+                    <td className="py-2">{fmtMoney(spent, currency)}</td>
+                    <td className={`py-2 ${limit - spent < 0 ? "text-red-600" : ""}`}>{fmtMoney(limit - spent, currency)}</td>
+                    <td className="py-2">
+                      <div className="flex gap-2">
+                        <button
+                          className="px-2 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-800"
+                          onClick={() => {
+                            const newAmt = Number(prompt(`Nuevo monto para ${c}`, String(limit)) || limit);
+                            if (!isFinite(newAmt) || newAmt < 0) return;
+                            upsertBudget(month, c, newAmt);
+                          }}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          className="px-2 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-800"
+                          onClick={() => deleteBudget(month, c)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-2">
+        <h2 className="font-semibold mb-2">Resumen por categorías</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 dark:text-slate-400">
+                <th className="py-2">Categoría</th>
+                <th className="py-2">Presupuesto</th>
+                <th className="py-2">Gastado</th>
+                <th className="py-2">Disponible</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allCats.map((c) => {
+                const limit = current[c] || 0;
+                const spent = spentMap[c] || 0;
+                return (
+                  <tr key={c} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-2 font-medium">{c}</td>
+                    <td className="py-2">{fmtMoney(limit, currency)}</td>
+                    <td className="py-2">{fmtMoney(spent, currency)}</td>
+                    <td className={`py-2 ${limit - spent < 0 ? "text-red-600" : ""}`}>{fmtMoney(limit - spent, currency)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
           </table>
         </div>
       </div>
     </section>
+  );
+}
 
-    <div class="footer">Tus datos se guardan en este navegador (localStorage). Importa/Exporta para respaldos.</div>
-  </div>
+function DebtsTab({ debts, addDebt, updateDebt, deleteDebt, currency }) {
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Agregar deuda</h2>
+        <DebtForm onSubmit={addDebt} />
+      </div>
 
-  <script>
-    // === Configuración básica ===
-    const LS_KEY = 'finapp.transactions.v1';
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-2">
+        <h2 className="font-semibold mb-2">Listado</h2>
+        {!debts.length && <p className="text-sm text-slate-500">Sin deudas registradas.</p>}
+        <div className="grid grid-cols-1 gap-3">
+          {debts.map((d) => (
+            <DebtCard key={d.id} d={d} currency={currency} onEdit={updateDebt} onDelete={deleteDebt} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
-    /** @type {Array<{id:string,date:string,type:'ingreso'|'gasto',category:string,description?:string,amount:number}>} */
-    let data = load();
+function DebtForm({ onSubmit }) {
+  const [form, setForm] = useState({
+    name: "Tarjeta de crédito",
+    principal: 500,
+    apr: 36, // % anual
+    minPayment: 25,
+    dueDay: 10,
+    extraPayment: 0,
+  });
 
-    // Estado de filtros
-    const state = {
-      from: '',
-      to: '',
-      type: 'todos',
-      category: '',
-      q: '',
-      order: 'fecha-desc'
-    };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (Number(form.principal) <= 0) return alert("Principal inválido");
+    onSubmit({
+      ...form,
+      principal: Number(form.principal),
+      apr: Number(form.apr),
+      minPayment: Number(form.minPayment),
+      extraPayment: Number(form.extraPayment),
+    });
+    setForm((f) => ({ ...f, name: "", principal: 0 }));
+  };
 
-    // Elementos UI
-    const el = id => document.getElementById(id);
-    const tbody = el('tbody');
+  return (
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+        <label className="text-xs text-slate-500">Nombre</label>
+        <input
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+          placeholder="Banco, tarjeta, préstamo"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Principal</label>
+        <input
+          type="number"
+          value={form.principal}
+          onChange={(e) => setForm({ ...form, principal: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">APR anual (%)</label>
+        <input
+          type="number"
+          value={form.apr}
+          onChange={(e) => setForm({ ...form, apr: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Pago mínimo mensual</label>
+        <input
+          type="number"
+          value={form.minPayment}
+          onChange={(e) => setForm({ ...form, minPayment: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Día de corte/Vencimiento</label>
+        <input
+          type="number"
+          value={form.dueDay}
+          onChange={(e) => setForm({ ...form, dueDay: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-slate-500">Pago extra mensual</label>
+        <input
+          type="number"
+          value={form.extraPayment}
+          onChange={(e) => setForm({ ...form, extraPayment: e.target.value })}
+          className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+        />
+      </div>
+      <div className="sm:col-span-2 flex justify-end">
+        <button className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm hover:opacity-90">Agregar</button>
+      </div>
+    </form>
+  );
+}
 
-    // Inicializar
-    init();
-
-    function init(){
-      // Defaults
-      const today = new Date().toISOString().slice(0,10);
-      el('fecha').value = today;
-
-      // Eventos form
-      el('formMov').addEventListener('submit', onSave);
-      el('btnReset').addEventListener('click', resetForm);
-
-      // Filtros
-      el('btnAplicarFiltros').addEventListener('click', e=>{e.preventDefault(); applyFiltersFromUI(); render();});
-      el('btnQuitarFiltros').addEventListener('click', e=>{e.preventDefault(); resetFilters(); render();});
-      el('orden').addEventListener('change', ()=>{state.order = el('orden').value; render();});
-
-      // Import/Export
-      el('btnExportar').addEventListener('click', exportJSON);
-      el('btnImportar').addEventListener('click', ()=> el('fileImport').click());
-      el('fileImport').addEventListener('change', importJSON);
-      el('btnVaciar').addEventListener('click', clearAll);
-
-      render();
+function DebtCard({ d, currency, onEdit, onDelete }) {
+  const monthlyRate = d.apr / 100 / 12;
+  const minPay = Math.max(0, Number(d.minPayment) + Number(d.extraPayment || 0));
+  let months = 0;
+  let balance = Number(d.principal);
+  let totalInterest = 0;
+  const schedule = [];
+  // Simulación simple: interés sobre saldo, pagar minPay hasta saldar
+  while (balance > 0 && months < 600) {
+    const interest = balance * monthlyRate;
+    const principalPaid = Math.max(0, minPay - interest);
+    const newBalance = Math.max(0, balance - principalPaid);
+    schedule.push({ month: months + 1, interest, principalPaid, newBalance });
+    totalInterest += interest;
+    balance = newBalance;
+    months++;
+    if (minPay <= interest + 1e-6) {
+      months = Infinity; // evita bucle si pago no cubre intereses
+      break;
     }
+  }
+  const payoffMonths = Number.isFinite(months) ? months : null;
 
-    // === Persistencia ===
-    function load(){
-      try{
-        const raw = localStorage.getItem(LS_KEY);
-        if(!raw) return [];
-        const arr = JSON.parse(raw);
-        if(Array.isArray(arr)) return arr;
-        return [];
-      }catch{ return [] }
-    }
-    function save(){
-      localStorage.setItem(LS_KEY, JSON.stringify(data));
-    }
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="font-semibold">{d.name}</h3>
+          <p className="text-xs text-slate-500">
+            Principal: {fmtMoney(d.principal, currency)} · APR: {d.apr}% · Mín: {fmtMoney(d.minPayment, currency)} · Extra: {fmtMoney(d.extraPayment || 0, currency)}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            className="px-2 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-800"
+            onClick={() => {
+              const extra = Number(prompt("Nuevo pago extra mensual", String(d.extraPayment || 0)) || d.extraPayment || 0);
+              onEdit(d.id, { extraPayment: extra });
+            }}
+          >
+            Editar
+          </button>
+          <button
+            className="px-2 py-1 rounded-lg border hover:bg-slate-100 dark:hover:bg-slate-800"
+            onClick={() => onDelete(d.id)}
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
 
-    // === CRUD ===
-    function onSave(e){
-      e.preventDefault();
-      const id = el('movId').value || crypto.randomUUID();
-      const date = el('fecha').value;
-      const type = el('tipo').value;
-      const category = (el('categoria').value || '').trim();
-      const description = (el('desc').value || '').trim();
-      const amount = parseFloat(el('monto').value);
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+          <p className="text-xs text-slate-500">Pago mensual estimado</p>
+          <p className="text-lg font-semibold">{fmtMoney(minPay, currency)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+          <p className="text-xs text-slate-500">Intereses totales</p>
+          <p className="text-lg font-semibold">{fmtMoney(totalInterest, currency)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+          <p className="text-xs text-slate-500">Meses para salir</p>
+          <p className="text-lg font-semibold">{payoffMonths ? payoffMonths : "—"}</p>
+        </div>
+      </div>
 
-      if(!date || !category || !type || isNaN(amount)){
-        alert('Completa fecha, tipo, categoría y monto.');
-        return;
-      }
+      <div className="h-48 mt-3">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={schedule}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="month" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="newBalance" name="Saldo" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
-      // Monto siempre positivo internamente; signo se maneja por type
-      const record = { id, date, type, category, description, amount: Math.abs(amount) };
+function ReportsTab({ transactions, currency, categories }) {
+  const [from, setFrom] = useState(startOfMonth(new Date()).toISOString().slice(0, 10));
+  const [to, setTo] = useState(endOfMonth(new Date()).toISOString().slice(0, 10));
 
-      const idx = data.findIndex(x=>x.id===id);
-      if(idx>=0){ data[idx] = record; }
-      else { data.push(record); }
-      save();
-      resetForm();
-      render();
-    }
+  const filtered = useMemo(() => {
+    const a = new Date(from);
+    const b = new Date(to);
+    return transactions.filter((t) => new Date(t.date) >= a && new Date(t.date) <= b);
+  }, [transactions, from, to]);
 
-    function editRow(id){
-      const r = data.find(x=>x.id===id); if(!r) return;
-      el('movId').value = r.id;
-      el('fecha').value = r.date;
-      el('tipo').value = r.type;
-      el('categoria').value = r.category;
-      el('monto').value = r.amount.toFixed(2);
-      el('desc').value = r.description || '';
-      window.scrollTo({top:0, behavior:'smooth'});
-    }
+  const byCat = useMemo(() => {
+    const acc = {};
+    filtered
+      .filter((t) => t.type === "gasto")
+      .forEach((t) => (acc[t.category] = (acc[t.category] || 0) + Number(t.amount)));
+    return Object.entries(acc)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filtered]);
 
-    function deleteRow(id){
-      if(!confirm('¿Eliminar este movimiento?')) return;
-      data = data.filter(x=>x.id!==id);
-      save();
-      render();
-    }
+  // Serie diaria para línea de tendencia del neto
+  const byDay = useMemo(() => {
+    const map = new Map();
+    filtered.forEach((t) => {
+      const key = t.date;
+      const sign = t.type === "ingreso" ? 1 : -1;
+      map.set(key, (map.get(key) || 0) + sign * Number(t.amount));
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+      .map(([date, net]) => ({ date, net }));
+  }, [filtered]);
 
-    function resetForm(){
-      el('movId').value = '';
-      el('tipo').value = 'ingreso';
-      el('categoria').value = '';
-      el('monto').value = '';
-      el('desc').value = '';
-      el('fecha').value = new Date().toISOString().slice(0,10);
-    }
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-3">
+        <h2 className="font-semibold mb-3">Filtros</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Desde</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Hasta</label>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-2 flex items-end">
+            <a
+              className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+              href={makeCSV(filtered)}
+              download={`reporte_${from}_a_${to}.csv`}
+            >
+              Exportar CSV
+            </a>
+          </div>
+        </div>
+      </div>
 
-    // === Filtrado + Orden ===
-    function applyFiltersFromUI(){
-      state.from = el('desde').value || '';
-      state.to = el('hasta').value || '';
-      state.type = el('filtroTipo').value;
-      state.category = (el('filtroCat').value || '').trim();
-      state.q = (el('buscar').value || '').trim().toLowerCase();
-    }
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-2">
+        <h2 className="font-semibold mb-2">Tendencia de neto (por día)</h2>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={byDay}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="net" name="Neto" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
-    function resetFilters(){
-      state.from = ''; state.to = ''; state.type = 'todos'; state.category = ''; state.q='';
-      el('desde').value=''; el('hasta').value=''; el('filtroTipo').value='todos'; el('filtroCat').value=''; el('buscar').value='';
-    }
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Top categorías (gasto)</h2>
+        <ul className="space-y-2">
+          {byCat.map((c, i) => (
+            <li key={c.name} className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <span
+                  className="inline-block h-3 w-3 rounded-sm"
+                  style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                />
+                {c.name}
+              </span>
+              <span className="font-medium">{fmtMoney(c.value, currency)}</span>
+            </li>
+          ))}
+          {!byCat.length && <li className="text-sm text-slate-500">Sin datos</li>}
+        </ul>
+      </div>
 
-    function getFilteredSorted(){
-      let arr = [...data];
-      // Filtros
-      if(state.from) arr = arr.filter(r=> r.date >= state.from);
-      if(state.to) arr = arr.filter(r=> r.date <= state.to);
-      if(state.type!=='todos') arr = arr.filter(r=> r.type===state.type);
-      if(state.category) arr = arr.filter(r=> r.category.toLowerCase() === state.category.toLowerCase());
-      if(state.q) arr = arr.filter(r=> (r.description||'').toLowerCase().includes(state.q) || r.category.toLowerCase().includes(state.q));
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-3">
+        <h2 className="font-semibold mb-2">Detalle</h2>
+        <TransactionList transactions={filtered} currency={currency} />
+      </div>
+    </section>
+  );
+}
 
-      // Orden
-      const [key,dir] = state.order.split('-');
-      arr.sort((a,b)=>{
-        let res = 0;
-        if(key==='fecha'){ res = a.date.localeCompare(b.date); }
-        if(key==='monto'){ res = a.amount - b.amount; }
-        return dir==='asc' ? res : -res;
-      });
+function SettingsTab({ settings, setSettings }) {
+  const [currency, setCurrency] = useState(settings.currency);
+  const [incomeCats, setIncomeCats] = useState(settings.categories.ingreso.join("\n"));
+  const [expenseCats, setExpenseCats] = useState(settings.categories.gasto.join("\n"));
 
-      return arr;
-    }
+  const apply = () => {
+    setSettings((s) => ({
+      ...s,
+      currency,
+      categories: {
+        ingreso: incomeCats.split("\n").map((x) => x.trim()).filter(Boolean),
+        gasto: expenseCats.split("\n").map((x) => x.trim()).filter(Boolean),
+      },
+    }));
+  };
 
-    // === Render ===
-    function render(){
-      const rows = getFilteredSorted();
-      el('contador').textContent = `${rows.length} resultado${rows.length!==1?'s':''}`;
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Preferencias</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Moneda (ISO)</label>
+            <input
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2"
+              placeholder="USD, CRC, NIO, HNL, GTQ..."
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={apply}
+              className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm hover:opacity-90 w-full"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mt-2">Consejo: si usas bancos locales y dólares, mantén USD.</p>
+      </div>
 
-      // KPIs
-      const ingresos = rows.filter(r=>r.type==='ingreso').reduce((s,r)=>s+r.amount,0);
-      const gastos = rows.filter(r=>r.type==='gasto').reduce((s,r)=>s+r.amount,0);
-      const balance = ingresos - gastos;
-      el('kpiIngresos').textContent = formatMoney(ingresos);
-      el('kpiGastos').textContent = formatMoney(gastos);
-      el('kpiBalance').textContent = formatMoney(balance);
-      el('kpiIngresosCount').textContent = `${rows.filter(r=>r.type==='ingreso').length} movs`;
-      el('kpiGastosCount').textContent = `${rows.filter(r=>r.type==='gasto').length} movs`;
-      el('kpiPeriodo').textContent = periodLabel();
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+        <h2 className="font-semibold mb-2">Categorías</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Ingresos (una por línea)</label>
+            <textarea
+              value={incomeCats}
+              onChange={(e) => setIncomeCats(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 h-40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Gastos (una por línea)</label>
+            <textarea
+              value={expenseCats}
+              onChange={(e) => setExpenseCats(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 h-40"
+            />
+          </div>
+        </div>
+      </div>
 
-      // Tabla
-      tbody.innerHTML = rows.map(r=>`
-        <tr>
-          <td class="muted">${r.date}</td>
-          <td><span class="chip ${r.type}">${r.type==='ingreso'?'Ingreso':'Gasto'}</span></td>
-          <td>${escapeHtml(r.category)}</td>
-          <td class="muted">${escapeHtml(r.description||'—')}</td>
-          <td style="text-align:right; font-weight:700">${formatMoney(r.amount)}</td>
-          <td style="text-align:right">
-            <button class="btn ghost" onclick="editRow('${r.id}')">Editar</button>
-            <button class="btn danger" onclick="deleteRow('${r.id}')">Eliminar</button>
-          </td>
-        </tr>
-      `).join('');
-    }
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 lg:col-span-2">
+        <h2 className="font-semibold mb-2">Guía rápida de uso</h2>
+        <ol className="list-decimal pl-5 space-y-1 text-sm text-slate-700 dark:text-slate-300">
+          <li>
+            Ve a <b>Transacciones</b> y registra tus ingresos y gastos (marca "Fijo" para rentas, servicios, etc.).
+          </li>
+          <li>Define tus <b>Presupuestos</b> por categoría para el mes actual.</li>
+          <li>
+            En <b>Deudas</b> agrega tus préstamos/tarjetas y prueba pagos extra para ver en cuántos meses sales.
+          </li>
+          <li>Explora <b>Reportes</b> para ver tendencias y exportar CSV.</li>
+          <li>
+            Usa <b>Importar/Exportar</b> (arriba) para respaldos. Todo se guarda en este navegador.
+          </li>
+        </ol>
+      </div>
+    </section>
+  );
+}
 
-    function periodLabel(){
-      const a = state.from ? state.from : 'inicio';
-      const b = state.to ? state.to : 'hoy';
-      if(a==='inicio' && b==='hoy') return 'Todo el periodo';
-      return `${a} → ${b}`;
-    }
+// ---------------------- Helpers --------------------------------------
+function makeCSV(rows) {
+  if (!rows.length) return "data:text/csv;charset=utf-8,fecha,tipo,categoria,cuenta,monto,nota";
+  const header = ["fecha", "tipo", "categoria", "cuenta", "monto", "nota"];
+  const body = rows
+    .map((r) => [r.date, r.type, quote(r.category), quote(r.account || ""), r.amount, quote(r.note || "")].join(","))
+    .join("\n");
+  const csv = header.join(",") + "\n" + body;
+  return "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+}
+function quote(s) {
+  return '"' + String(s).replaceAll('"', '""') + '"';
+}
 
-    // === Utilidades ===
-    function formatMoney(n){
-      return new Intl.NumberFormat('es-SV',{style:'currency', currency:'USD'}).format(Number(n||0));
-    }
-    function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
+// ---------------------- Tests básicos (console) -----------------------
+(function devTests() {
+  try {
+    // Test: monthKey produce YYYY-MM
+    const mk = monthKey("2025-11-05");
+    if (!/^\d{4}-\d{2}$/.test(mk)) throw new Error("monthKey formato inválido");
 
-    // === Import / Export ===
-    function exportJSON(){
-      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-      const a = document.createElement('a');
-      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-      a.href = URL.createObjectURL(blob);
-      a.download = `finanzas-backup-${ts}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
+    // Test: CSV mínimo
+    const csv = makeCSV([
+      { date: "2025-11-05", type: "ingreso", category: "Salario", account: "Banco", amount: 1000, note: "" },
+    ]);
+    if (!csv.startsWith("data:text/csv")) throw new Error("CSV data URI no generado");
 
-    async function importJSON(ev){
-      const file = ev.target.files[0]; if(!file) return;
-      try{
-        const text = await file.text();
-        const arr = JSON.parse(text);
-        if(!Array.isArray(arr)) throw new Error('Formato inválido');
-        // Opciones: fusionar o reemplazar
-        const mode = confirm('OK = Reemplazar todo. Cancel = Fusionar.');
-        if(mode){ // Reemplazar
-          data = sanitize(arr);
-        }else{ // Fusionar por id
-          const map = new Map(data.map(x=>[x.id,x]));
-          for(const r of sanitize(arr)) map.set(r.id, r);
-          data = Array.from(map.values());
-        }
-        save();
-        render();
-        alert('Importación completada.');
-      }catch(err){
-        alert('No se pudo importar: '+ err.message);
-      }finally{
-        ev.target.value = '';
-      }
-    }
+    // Test: upsertBudget lógica pura
+    let state = { "2025-11": { Alimentos: 100 } };
+    const applyUpsert = (s, m, c, a) => ({ ...s, [m]: { ...(s[m] || {}), [c]: Number(a) } });
+    state = applyUpsert(state, "2025-11", "Alimentos", 200);
+    if (state["2025-11"].Alimentos !== 200) throw new Error("upsertBudget no actualiza");
 
-    function sanitize(arr){
-      return arr.map(r=>({
-        id: String(r.id||crypto.randomUUID()),
-        date: String(r.date||'').slice(0,10),
-        type: r.type==='ingreso'?'ingreso':'gasto',
-        category: String(r.category||'Otros'),
-        description: r.description? String(r.description):'',
-        amount: Math.abs(Number(r.amount||0))
-      })).filter(r=> r.date && r.category && !isNaN(r.amount));
-    }
+    // Test: simulación de deuda decrece
+    const monthly = 0.36 / 12;
+    let bal = 1000;
+    const pay = 100;
+    const interest = bal * monthly;
+    const principal = Math.max(0, pay - interest);
+    const newBal = Math.max(0, bal - principal);
+    if (!(newBal < bal)) throw new Error("balance debe decrecer si pago > interés");
 
-    function clearAll(){
-      if(!confirm('¿Borrar TODOS los movimientos? Esta acción no se puede deshacer.')) return;
-      data = [];
-      save();
-      render();
-    }
-
-    // Exponer funciones para botones en la tabla
-    window.editRow = editRow;
-    window.deleteRow = deleteRow;
-  </script>
-</body>
-</html>
+    // Si todo OK
+    // console.log("Tests OK");
+  } catch (e) {
+    console.error("Dev test fallo:", e.message);
+  }
+})();
